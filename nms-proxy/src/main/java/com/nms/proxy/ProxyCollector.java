@@ -41,6 +41,7 @@ public class ProxyCollector {
     private final ServerClient serverClient;
     private final PollerRegistry pollers;
     private final ResultSpool spool;
+    private final Heartbeat heartbeat;
 
     /** The current assignment, replaced wholesale when the server revises it. */
     private final Map<Long, ScheduledCheck> assignment = new ConcurrentHashMap<>();
@@ -56,11 +57,13 @@ public class ProxyCollector {
     public ProxyCollector(ProxyProperties properties,
                           ServerClient serverClient,
                           PollerRegistry pollers,
-                          ResultSpool spool) {
+                          ResultSpool spool,
+                          Heartbeat heartbeat) {
         this.properties = properties;
         this.serverClient = serverClient;
         this.pollers = pollers;
         this.spool = spool;
+        this.heartbeat = heartbeat;
     }
 
     @PostConstruct
@@ -89,6 +92,11 @@ public class ProxyCollector {
     }
 
     private void applyConfiguration(ProxyConfigResponse response) {
+        // Recorded whether or not the configuration changed: reaching the
+        // server at all is what the heartbeat attests to, and an idle proxy
+        // with nothing to upload still proves the link this way every minute.
+        heartbeat.record();
+
         if (!response.changed()) {
             return;
         }
@@ -174,6 +182,7 @@ public class ProxyCollector {
 
         serverClient.upload(batch, spool.depth(), version).ifPresentOrElse(
                 acknowledgement -> {
+                    heartbeat.record();
                     if (acknowledgement.configRevision() != configRevision) {
                         // The server noticed our configuration is stale while
                         // acknowledging data, which saves waiting for the next

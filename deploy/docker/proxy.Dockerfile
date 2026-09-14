@@ -27,9 +27,10 @@ RUN mvn -B -q -pl nms-proxy -am package -DskipTests
 FROM eclipse-temurin:21-jre-jammy
 
 # The proxy is the component that actually pings the cameras, so ping matters
-# here even more than on the server.
+# here even more than on the server. No curl: the health check below reads a
+# file rather than making a request, so nothing needs an HTTP client.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends iputils-ping curl \
+ && apt-get install -y --no-install-recommends iputils-ping \
  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nms \
@@ -46,9 +47,21 @@ VOLUME ["/var/lib/nms/spool"]
 USER nms
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError" \
-    NMS_PROXY_SPOOL_DIR=/var/lib/nms/spool
+    NMS_PROXY_SPOOL_DIR=/var/lib/nms/spool \
+    NMS_PROXY_HEARTBEAT_FILE=/var/lib/nms/heartbeat
 
-HEALTHCHECK --interval=30s --timeout=4s --start-period=30s --retries=3 \
-  CMD curl -fsS http://localhost:8081/actuator/health || exit 1
+# The proxy listens on nothing, so there is no endpoint to poll. It touches a
+# file whenever it reaches the server, and this checks that file's age.
+#
+# That is the more useful question anyway. An HTTP 200 from the proxy's own
+# health endpoint would prove only that its JVM is running -- a proxy that is up
+# but has not reached the server in an hour would report itself perfectly
+# healthy, and that is precisely the failure worth catching.
+#
+# Five minutes is several configuration polls (one a minute by default), so a
+# single missed request does not flap the container.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=90s --retries=2 \
+  CMD test -f "$NMS_PROXY_HEARTBEAT_FILE" \
+   && [ $(( $(date +%s) - $(stat -c %Y "$NMS_PROXY_HEARTBEAT_FILE") )) -lt 300 ]
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

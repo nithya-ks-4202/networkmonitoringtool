@@ -33,6 +33,9 @@ not a finished replacement for a product with twenty-five years behind it.
 
 ## Running it
 
+**Running it on your own hardware?** [docs/ON-PREMISE.md](docs/ON-PREMISE.md) is the
+runbook: sizing, TLS, backups, upgrades, remote sites and troubleshooting.
+
 ### Locally, with Docker Compose
 
 ```bash
@@ -201,15 +204,27 @@ severity filtering and ordering; the agent answering its wire protocol with real
 CPU, memory, filesystem, load and process values; the web interface rendered in a
 browser across every page.
 
-**Verified by test:** 65 tests over the collector pollers and the trigger
-expression engine — parser, evaluator, and the propagation of "no data" through
-both.
+**The full proxy path, end to end:** creating a proxy through the API, token
+issue and rejection, enrolment, configuration fetch, local polling, upload, and
+the resulting values driving trigger evaluation to open the right problems —
+including a trigger dependency correctly *not* suppressing faults whose master
+trigger was healthy.
 
-**Not verified:** the Dockerfiles and Compose file were not built (no Docker
-daemon in the build environment) and the Helm chart was not rendered by `helm
-template` (helm could not be downloaded). Their YAML parses and the templates are
-structurally sound, but they have not been run. SNMP, ONVIF and the proxy upload
-path have unit coverage and no integration test against real hardware.
+**Backup and restore:** `deploy/backup.sh` run against a live database, and the
+dump restored into a fresh one with data intact.
+
+**Verified by test:** 73 tests over the collector pollers, the failure
+describer, and the trigger expression engine — parser, evaluator, and the
+propagation of "no data" through both.
+
+**Not verified:** the container images were never built, because there is no
+Docker daemon in this environment. Each Dockerfile's build stage was instead run
+directly against a replica of the exact context it copies — so the Maven and npm
+builds inside them are known to work, but the runtime stages, entrypoints and
+health checks have not executed. The Helm chart was not rendered by `helm
+template` either (the binary could not be downloaded); its templates are
+structurally checked only. SNMP and ONVIF have unit coverage and no integration
+test against real hardware.
 
 ## Licence
 

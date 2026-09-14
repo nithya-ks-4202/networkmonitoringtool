@@ -89,7 +89,7 @@ public class SnmpPoller implements Poller {
             return walk ? walk(request, target, oid) : get(request, target, oid);
         } catch (IOException e) {
             return CheckResult.failed(request.itemId(),
-                    "SNMP request to " + request.address() + " failed: " + e.getMessage());
+                    "SNMP request to " + request.address() + " failed: " + com.nms.collector.Failures.describe(e));
         }
     }
 

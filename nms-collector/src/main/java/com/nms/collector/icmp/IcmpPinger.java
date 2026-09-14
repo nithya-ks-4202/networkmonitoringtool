@@ -198,7 +198,7 @@ public class IcmpPinger {
             return new PingResult(reachable, 1, reachable ? 1 : 0, reachable ? 0 : 100,
                     0, 0, 0, reachable ? null : "host did not respond");
         } catch (IOException e) {
-            return PingResult.unreachable(e.getMessage());
+            return PingResult.unreachable(com.nms.collector.Failures.describe(e));
         }
     }
 
