@@ -1,0 +1,55 @@
+server {
+    # 8080 rather than 80 so the container needs no privileged port and can run
+    # as a non-root user.
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The interface is a single-page application: any path it owns has to return
+    # index.html so that a deep link, or a refresh on /problems, does not 404.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Hashed asset filenames change whenever their content does, so they can be
+    # cached indefinitely. index.html must never be, or a deploy would leave
+    # browsers pointing at assets that no longer exist.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location /api/ {
+        proxy_pass http://${NMS_SERVER_HOST}:${NMS_SERVER_PORT};
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        # Forwarded so the server's audit log records the operator's address
+        # rather than this container's.
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Generous, because a graph over a long range on a large estate can
+        # legitimately take a while, and a truncated response looks to the
+        # operator like the product is broken.
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    120s;
+    }
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript application/xml;
+    gzip_min_length 1024;
+
+    # The interface is same-origin with its API and loads nothing external, so
+    # these cost nothing and close off whole classes of attack.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+}

@@ -1,0 +1,142 @@
+# ---------------------------------------------------------------------------
+# Values for a hosted deployment.
+#
+# The server is stateless -- scheduling state lives in the database and work is
+# claimed with SELECT ... FOR UPDATE SKIP LOCKED -- so replicas need no leader
+# election, no sticky sessions and no coordination. Scale it like any other web
+# service.
+# ---------------------------------------------------------------------------
+
+image:
+  registry: ghcr.io
+  repository: your-org/nms
+  # Pinned by digest or version in any real deployment. "latest" makes a rollout
+  # unreproducible and a rollback meaningless.
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+server:
+  replicaCount: 2
+
+  resources:
+    requests:
+      # Requests are what the scheduler packs against and what guarantees the
+      # pod its share under contention; they are deliberately close to steady
+      # state rather than optimistic.
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      # No CPU limit. Throttling a poller at the moment an incident causes a
+      # burst of work is precisely wrong -- it delays the alert about the thing
+      # that caused the burst. The request still guarantees its share.
+      memory: 2Gi
+
+  # Checks are I/O-bound, so worker threads far exceed the core count.
+  pollerThreads: 50
+
+  # Enough for the poller pool plus web threads, and low enough that
+  # replicas * poolSize stays under the database's connection ceiling --
+  # which fails far less gracefully than a slow request.
+  dbPoolSize: 30
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    # On memory, not CPU: the server is mostly waiting on the network, so CPU
+    # stays low while history buffers and caches grow with the estate.
+    targetMemoryUtilizationPercentage: 75
+
+  # Drains in-flight checks and flushes the history buffer before exit. Must
+  # exceed the graceful shutdown period in application.yml.
+  terminationGracePeriodSeconds: 60
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+web:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+database:
+  # Host of a managed Postgres or TimescaleDB. TimescaleDB is preferred: the
+  # migrations detect it and use compressed hypertables, which is the difference
+  # between dropping a chunk and deleting a hundred million rows.
+  host: ""
+  port: 5432
+  name: nms
+  user: nms
+
+  # Read from a Secret rather than set here, so the password is not in the
+  # values file, in version control, or in `helm get values` output.
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+  # Verifies the server's certificate. Anything else sends the credentials for
+  # every monitored device over a connection nobody authenticated.
+  sslMode: verify-full
+
+security:
+  # Must exist before install. Holds:
+  #   jwt-secret      signs sessions; shared by every replica, or they reject
+  #                   each other's tokens
+  #   admin-password  optional; generated and logged once when absent
+  existingSecret: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: monitoring.example.com
+  tls:
+    enabled: true
+    secretName: nms-tls
+  annotations:
+    # Uploads from a proxy that has been offline can be large.
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+
+# Where notification links point. Has to be the address an operator can reach.
+baseUrl: https://monitoring.example.com
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pods run unprivileged with a read-only root filesystem. The server holds
+# credentials for every device it monitors, which makes it worth attacking.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+    # ICMP needs this and nothing else. Dropping it makes every ping check fall
+    # back to a TCP probe that cannot measure loss or latency.
+    add: ["NET_RAW"]
+
+monitoring:
+  serviceMonitor:
+    # The platform exposes its own metrics: queue depths, values written and
+    # dropped, alerts sent and failed. Worth scraping -- a monitoring system
+    # that cannot report on itself is the one blind spot that matters.
+    enabled: false
+    interval: 30s
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

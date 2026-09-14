@@ -1,0 +1,22 @@
+apiVersion: v2
+name: nms
+description: Network and infrastructure monitoring platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - monitoring
+  - snmp
+  - icmp
+  - cameras
+  - alerting
+
+maintainers:
+  - name: Platform team
+
+# No database subchart on purpose. Running Postgres inside the cluster from a
+# chart dependency is easy to install and hard to operate: monitoring history is
+# the thing people most regret losing, and a managed database brings backups,
+# point-in-time recovery and failover that a StatefulSet here would not.
+# Point the chart at a managed TimescaleDB or Postgres instead.
