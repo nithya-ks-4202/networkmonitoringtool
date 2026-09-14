@@ -311,4 +311,16 @@ public class HostService {
             proxies.bumpConfigRevision(host.getProxy().getId());
         }
     }
+
+    /**
+     * A reference to a host, for setting a foreign key without loading it.
+     *
+     * <p>Used by discovery to record which host a found device became. Only
+     * the id is needed for that, and fetching the whole aggregate -- its
+     * interfaces, macros, groups and tags -- to write one column would be
+     * several queries for nothing.
+     */
+    public Host reference(Long hostId) {
+        return hosts.getReferenceById(hostId);
+    }
 }
