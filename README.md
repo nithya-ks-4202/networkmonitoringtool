@@ -50,7 +50,11 @@ its own — see [docs/ON-PREMISE.md](docs/ON-PREMISE.md#running-it-on-the-mac).
 ```bash
 ./deploy/init-env.sh            # writes .env with generated secrets
 docker compose up -d
-docker compose logs -f server   # the generated admin password is printed once
+
+# The generated admin password. Printed once, at the first start against an
+# empty database -- so read it from the log rather than waiting for it to
+# scroll past.
+docker compose logs server | grep -A 4 "administrator account"
 ```
 
 The interface is then on <http://localhost:3000>.

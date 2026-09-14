@@ -72,8 +72,15 @@ git clone <your-repo> /opt/nms && cd /opt/nms
 ./deploy/init-env.sh             # writes .env with generated secrets
 
 docker compose up -d             # first run builds the images; allow a few minutes
-docker compose logs -f server    # the admin password is printed once
+
+# The generated admin password, printed once at the first start.
+docker compose logs server | grep -A 4 "administrator account"
 ```
+
+Grep for `administrator account`, not for `admin`: the password is on its own
+line and does not contain that word, so the obvious search hides exactly the
+line you wanted. If you have already lost it, see **Resetting the admin
+password** under Troubleshooting.
 
 No `sudo` on any of that. The files belong to you, and running Compose as root
 leaves a `.env` and build cache that you then cannot edit.
@@ -229,6 +236,37 @@ git pull
 Check for the same damage elsewhere while you are there — `ls -la` for anything
 owned by `root`, particularly `.env`, which the server needs to read and you
 need to edit.
+
+**Resetting the admin password, or finding it after it scrolled away.**
+It is still in the container log, as long as that container has not been
+recreated:
+
+```bash
+docker compose logs server | grep -A 4 "administrator account"
+```
+
+Grep for `administrator account` rather than `admin`. The password sits on its
+own line and does not contain the word, so searching for `admin` returns the
+username and hides the password.
+
+If it is genuinely gone, the account can be recreated. The bootstrap runs only
+when the tenant has no users at all, so the existing one has to go first —
+**this deletes every account**, which is fine on a fresh install and is not
+what you want on an established one:
+
+```bash
+docker compose stop server
+docker compose exec -T db psql -U nms -d nms \
+  -c "DELETE FROM app_user WHERE tenant_id = 1;"
+
+echo 'NMS_ADMIN_PASSWORD=<the password you want>' >> .env
+docker compose up -d server
+```
+
+Nothing else is lost: hosts, items, history and problems are all independent of
+the user table, and the rows that do reference a user either cascade with it
+(preferences, media) or are set to null (acknowledgements keep their text and
+lose the attribution).
 
 **Every ICMP check reports down, but the devices are up.**
 `ping` is missing or `NET_RAW` was not granted, so checks fell back to a TCP probe. Check the server log at startup for `No ping binary found`.
