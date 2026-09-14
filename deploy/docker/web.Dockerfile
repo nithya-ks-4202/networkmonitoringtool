@@ -6,7 +6,11 @@
 # concern rather than a production one.
 # ---------------------------------------------------------------------------
 
-FROM node:22-alpine AS build
+# Overridable for registry mirrors -- see server.Dockerfile.
+ARG NODE_IMAGE=node:22-alpine
+ARG NGINX_IMAGE=nginx:1.27-alpine
+
+FROM ${NODE_IMAGE} AS build
 WORKDIR /build
 
 # npm ci needs both files and installs exactly what the lockfile pins, so a
@@ -19,7 +23,7 @@ RUN npm run build
 
 # ---------------------------------------------------------------------------
 
-FROM nginx:1.27-alpine
+FROM ${NGINX_IMAGE}
 
 COPY --from=build /build/dist /usr/share/nginx/html
 

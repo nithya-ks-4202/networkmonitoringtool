@@ -6,7 +6,13 @@
 # unprivileged.
 # ---------------------------------------------------------------------------
 
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Overridable for registry mirrors -- see server.Dockerfile. It matters more
+# here than anywhere else: the proxy is the component that gets installed on
+# someone else's network, which is exactly where Docker Hub tends to be blocked.
+ARG MAVEN_IMAGE=maven:3.9-eclipse-temurin-21
+ARG RUNTIME_IMAGE=eclipse-temurin:21-jre-jammy
+
+FROM ${MAVEN_IMAGE} AS build
 WORKDIR /build
 
 COPY pom.xml .
@@ -24,7 +30,7 @@ RUN mvn -B -q -pl nms-proxy -am package -DskipTests
 
 # ---------------------------------------------------------------------------
 
-FROM eclipse-temurin:21-jre-jammy
+FROM ${RUNTIME_IMAGE}
 
 # The proxy is the component that actually pings the cameras, so ping matters
 # here even more than on the server. No curl: the health check below reads a

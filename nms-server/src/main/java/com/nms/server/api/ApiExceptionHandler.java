@@ -110,6 +110,33 @@ public class ApiExceptionHandler {
                         + "Check for a duplicate name or key.", request);
     }
 
+    /**
+     * An address that matches no endpoint.
+     *
+     * <p>Without this the catch-all below turns every mistyped URL into a 500
+     * with a stack trace -- which tells an integrator their request broke the
+     * server when in fact they misspelled a path, and buries real faults in the
+     * log under noise that any scanner hitting the host can generate.
+     */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> onNoEndpoint(
+            org.springframework.web.servlet.resource.NoResourceFoundException e,
+            HttpServletRequest request) {
+        log.debug("No endpoint for {} {}", request.getMethod(), request.getRequestURI());
+        return response(HttpStatus.NOT_FOUND,
+                "No endpoint at this address.", request);
+    }
+
+    /** A known endpoint asked for with the wrong verb. */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> onWrongMethod(
+            org.springframework.web.HttpRequestMethodNotSupportedException e,
+            HttpServletRequest request) {
+        log.debug("{} not supported for {}", request.getMethod(), request.getRequestURI());
+        return response(HttpStatus.METHOD_NOT_ALLOWED,
+                "This endpoint does not accept " + request.getMethod() + ".", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> onUnexpected(Exception e, HttpServletRequest request) {
         // Logged in full, returned in outline: an unexpected failure often
