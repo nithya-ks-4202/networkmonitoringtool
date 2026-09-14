@@ -1,0 +1,38 @@
+# Build output
+target/
+build/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Local configuration and secrets
+.env
+.env.local
+application-local.yml
+*.p12
+*.jks
+*.pem
+!deploy/**/*.example.pem
+
+# Proxy spool and agent state
+spool/
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
