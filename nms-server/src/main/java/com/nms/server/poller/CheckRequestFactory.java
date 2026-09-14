@@ -75,6 +75,11 @@ public class CheckRequestFactory {
         // override a specific field if it genuinely needs to.
         params.putAll(iface.snmpParams());
 
+        // The collection interval travels with the request because a proxy has
+        // no item table to look it up in: without this it would have to fall
+        // back to a single default for every check it runs.
+        params.put("delaySeconds", Integer.toString(item.getDelaySeconds()));
+
         item.getParams().forEach((key, value) ->
                 params.put(key, macroResolver.resolve(value, host, item.getLldMacroValues())));
 

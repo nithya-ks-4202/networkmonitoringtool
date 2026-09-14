@@ -60,7 +60,11 @@
             <configuration>
               <createDependencyReducedPom>false</createDependencyReducedPom>
               <finalName>nms-agent</finalName>
-              <transformers>
+              <!-- The Spring Boot parent contributes its own transformer list
+                   through pluginManagement. Maven would merge the two lists
+                   element-wise and apply the parent's parameters to our
+                   transformers, which fails to parse; overriding replaces it. -->
+              <transformers combine.self="override">
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>com.nms.agent.AgentMain</mainClass>
                 </transformer>
