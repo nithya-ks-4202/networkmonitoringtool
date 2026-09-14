@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: nms-proxy
+  main:
+    # No web server: the proxy only makes outbound requests, and listening on a
+    # port inside a customer network would be an attack surface with no purpose.
+    web-application-type: none
+
+nms:
+  proxy:
+    # Where the cloud server lives. HTTPS in any real deployment.
+    server-url: ${NMS_SERVER_URL:http://localhost:8080}
+
+    # Issued when the proxy was created in the interface, shown once.
+    token: ${NMS_PROXY_TOKEN:}
+
+    # Name used in this proxy's own logs.
+    name: ${NMS_PROXY_NAME:proxy}
+
+    config-interval: ${NMS_PROXY_CONFIG_INTERVAL:1m}
+    upload-interval: ${NMS_PROXY_UPLOAD_INTERVAL:10s}
+    upload-batch-size: ${NMS_PROXY_UPLOAD_BATCH:1000}
+
+    # Checks are I/O-bound -- almost all of their time is spent waiting for a
+    # device to reply -- so this is far above the core count on purpose.
+    poller-threads: ${NMS_PROXY_THREADS:25}
+
+    # Results are buffered here when the server is unreachable. Mount this on
+    # persistent storage: it is what makes an overnight link failure cost
+    # latency rather than data.
+    spool-directory: ${NMS_PROXY_SPOOL_DIR:./spool}
+    spool-max-bytes: ${NMS_PROXY_SPOOL_MAX_BYTES:536870912}
+
+    request-timeout: ${NMS_PROXY_REQUEST_TIMEOUT:30s}
+
+  collector:
+    icmp:
+      cache-ttl-seconds: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.nms: ${NMS_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"

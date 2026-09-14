@@ -1,0 +1,160 @@
+spring:
+  application:
+    name: nms-server
+
+  datasource:
+    # Every setting is overridable by environment variable so the same image
+    # runs against a local container and a managed cloud database.
+    url: ${NMS_DB_URL:jdbc:postgresql://localhost:5432/nms}
+    username: ${NMS_DB_USER:nms}
+    password: ${NMS_DB_PASSWORD:nms}
+    hikari:
+      # Sized for the poller pool plus web threads. Too small and collection
+      # stalls behind connection acquisition; too large and a managed Postgres
+      # hits its own connection ceiling, which fails much less gracefully.
+      maximum-pool-size: ${NMS_DB_POOL_SIZE:30}
+      minimum-idle: 5
+      connection-timeout: 10000
+      max-lifetime: 1800000
+      pool-name: nms-pool
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema. Letting Hibernate near DDL in a product that
+      # ships migrations is how production schemas drift from source control.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  task:
+    scheduling:
+      pool:
+        size: 8
+
+  jackson:
+    # Nulls are serialised explicitly rather than omitted. An absent field and a
+    # null field are indistinguishable to a client, so "never collected" and
+    # "the key is missing" become the same thing -- and a check for null quietly
+    # passes on undefined. The few extra bytes are worth an unambiguous contract.
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${NMS_PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: always
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,application/javascript
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Liveness and readiness drive Kubernetes probes; metrics feeds the
+        # platform's own monitoring.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+nms:
+  security:
+    # Must be set in any real deployment; startup fails loudly if it is not,
+    # rather than quietly signing tokens with a value an attacker can read in
+    # the source.
+    jwt-secret: ${NMS_JWT_SECRET:}
+    access-token-minutes: ${NMS_ACCESS_TOKEN_MINUTES:60}
+    refresh-token-days: ${NMS_REFRESH_TOKEN_DAYS:7}
+    max-failed-logins: 5
+    lockout-minutes: 15
+    # Created on first start when no user exists. Left blank, a password is
+    # generated and printed once to the log.
+    admin-username: ${NMS_ADMIN_USERNAME:admin}
+    admin-password: ${NMS_ADMIN_PASSWORD:}
+
+  poller:
+    enabled: ${NMS_POLLER_ENABLED:true}
+    # Worker threads executing checks. Checks are I/O-bound -- almost all of
+    # their time is spent waiting on a network reply -- so this is far above
+    # the core count on purpose.
+    threads: ${NMS_POLLER_THREADS:50}
+    # Items claimed per scheduling pass.
+    batch-size: ${NMS_POLLER_BATCH:500}
+    dispatch-interval-ms: 1000
+    # An item whose check takes longer than this is abandoned so its worker
+    # can serve the queue behind it.
+    max-check-seconds: 30
+
+  history:
+    # Values are written in batches. A camera fleet at one-minute intervals
+    # produces a steady stream of tiny writes, and batching turns thousands of
+    # round trips per minute into tens.
+    batch-size: ${NMS_HISTORY_BATCH:1000}
+    flush-interval-ms: ${NMS_HISTORY_FLUSH_MS:1000}
+    queue-capacity: 200000
+
+  housekeeper:
+    enabled: ${NMS_HOUSEKEEPER_ENABLED:true}
+    # Runs hourly rather than nightly: one enormous nightly delete is far more
+    # disruptive to a live database than many small ones.
+    interval-minutes: 60
+    delete-batch-size: 10000
+
+  escalator:
+    enabled: ${NMS_ESCALATOR_ENABLED:true}
+    interval-seconds: 10
+
+  alerter:
+    enabled: ${NMS_ALERTER_ENABLED:true}
+    interval-seconds: 5
+    batch-size: 100
+
+  proxy:
+    # How long a proxy may be silent before it is shown as offline.
+    offline-after-seconds: ${NMS_PROXY_OFFLINE_AFTER:180}
+    # Seconds between a proxy's uploads, handed to it in its configuration.
+    upload-interval-seconds: ${NMS_PROXY_UPLOAD_INTERVAL:10}
+
+logging:
+  level:
+    root: INFO
+    com.nms: ${NMS_LOG_LEVEL:INFO}
+    org.hibernate.SQL: WARN
+
+---
+# Local development: an in-process profile that does not require the poller to
+# reach anything real.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+logging:
+  level:
+    com.nms: DEBUG

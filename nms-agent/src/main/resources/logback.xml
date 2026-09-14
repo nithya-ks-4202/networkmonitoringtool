@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The agent runs on somebody else's production machine, so it logs sparingly.
+
+  OSHI is pinned to WARN because at DEBUG it reports every /proc and /sys file
+  it opens, which for a single CPU utilisation reading is dozens of lines. On an
+  agent polled once a minute that would fill a disk it does not own.
+-->
+<configuration>
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{28} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="oshi" level="WARN"/>
+  <logger name="com.sun.jna" level="WARN"/>
+
+  <root level="${NMS_AGENT_LOG_LEVEL:-INFO}">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+
+</configuration>

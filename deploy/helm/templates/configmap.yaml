@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    app.kubernetes.io/name: nms
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  # sslmode is part of the URL rather than a separate setting because the JDBC
+  # driver only reads it there. verify-full is the only value that checks the
+  # certificate is both valid and for the host asked for -- anything less sends
+  # the credentials of every monitored device over an unauthenticated channel.
+  NMS_DB_URL: >-
+    jdbc:postgresql://{{ required "database.host is required" .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode={{ .Values.database.sslMode }}
+  NMS_DB_USER: {{ .Values.database.user | quote }}
+
+  # Replicas times pool size has to stay under the database's own connection
+  # limit; exceeding it fails far less gracefully than a slow request.
+  NMS_DB_POOL_SIZE: {{ .Values.server.dbPoolSize | quote }}
+
+  NMS_POLLER_THREADS: {{ .Values.server.pollerThreads | quote }}
+
+  # Every replica polls, escalates and sends. Work is claimed with SKIP LOCKED,
+  # so they share one queue without any item being handled twice.
+  NMS_POLLER_ENABLED: "true"
+  NMS_ESCALATOR_ENABLED: "true"
+  NMS_ALERTER_ENABLED: "true"
+  NMS_HOUSEKEEPER_ENABLED: "true"
+
+  # Used to build the links inside notifications, so it has to be reachable
+  # from wherever the recipient reads them.
+  NMS_BASE_URL: {{ .Values.baseUrl | quote }}
+
+  # Same-origin behind the ingress, so no cross-origin request is expected.
+  NMS_SECURITY_ALLOWED_ORIGINS: {{ .Values.baseUrl | quote }}

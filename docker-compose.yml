@@ -1,0 +1,115 @@
+# ---------------------------------------------------------------------------
+# The whole platform on one machine.
+#
+# Suits an evaluation, a development environment, or a small on-premise install.
+# For a hosted deployment use deploy/helm instead, with a managed Postgres: the
+# database in this file has no backups, no failover and no point-in-time
+# recovery, and monitoring history is the thing people most regret losing.
+#
+# Copy .env.example to .env and set the passwords before starting.
+# ---------------------------------------------------------------------------
+
+name: nms
+
+services:
+  db:
+    # TimescaleDB rather than plain Postgres: the migrations detect it and
+    # convert the history tables into compressed hypertables. Plain postgres:16
+    # also works -- the schema falls back automatically -- but retention then
+    # costs a delete rather than a chunk drop.
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: ${NMS_DB_NAME:-nms}
+      POSTGRES_USER: ${NMS_DB_USER:-nms}
+      POSTGRES_PASSWORD: ${NMS_DB_PASSWORD:?set NMS_DB_PASSWORD in .env}
+      # Monitoring is write-heavy and its writes are individually worthless:
+      # losing the last second of samples to a crash is unimportant, and not
+      # waiting for the disk on every commit is a large throughput gain.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=timescaledb
+      - -c
+      - max_connections=200
+      - -c
+      - synchronous_commit=off
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Named user and database, not the defaults: pg_isready reports ready for
+      # the wrong database otherwise, and the server starts against nothing.
+      test: ["CMD-SHELL", "pg_isready -U ${NMS_DB_USER:-nms} -d ${NMS_DB_NAME:-nms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: deploy/docker/server.Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NMS_DB_URL: jdbc:postgresql://db:5432/${NMS_DB_NAME:-nms}
+      NMS_DB_USER: ${NMS_DB_USER:-nms}
+      NMS_DB_PASSWORD: ${NMS_DB_PASSWORD:?set NMS_DB_PASSWORD in .env}
+      # Without this the server generates a signing key at startup, so every
+      # restart invalidates every session and two replicas reject each other's
+      # tokens.
+      NMS_JWT_SECRET: ${NMS_JWT_SECRET:?set NMS_JWT_SECRET in .env (32+ characters)}
+      # Left unset, a password is generated and printed once to the log.
+      NMS_ADMIN_PASSWORD: ${NMS_ADMIN_PASSWORD:-}
+      NMS_BASE_URL: ${NMS_BASE_URL:-http://localhost:3000}
+      NMS_POLLER_THREADS: ${NMS_POLLER_THREADS:-50}
+      NMS_LOG_LEVEL: ${NMS_LOG_LEVEL:-INFO}
+    ports:
+      - "${NMS_SERVER_PORT:-8080}:8080"
+    # ICMP from an unprivileged user needs this. Without it the server falls
+    # back to a TCP reachability probe that cannot measure loss or latency.
+    cap_add:
+      - NET_RAW
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+    depends_on:
+      - server
+    environment:
+      NMS_SERVER_HOST: server
+      NMS_SERVER_PORT: 8080
+    ports:
+      - "${NMS_WEB_PORT:-3000}:8080"
+    restart: unless-stopped
+
+  # An on-premise collector. Not started by default: it belongs on the network
+  # being monitored, which is usually a different machine from this one.
+  # Create a proxy in the interface, put its token in .env, then:
+  #   docker compose --profile proxy up -d
+  proxy:
+    build:
+      context: .
+      dockerfile: deploy/docker/proxy.Dockerfile
+    profiles: ["proxy"]
+    environment:
+      NMS_SERVER_URL: ${NMS_PROXY_SERVER_URL:-http://server:8080}
+      NMS_PROXY_TOKEN: ${NMS_PROXY_TOKEN:?set NMS_PROXY_TOKEN in .env}
+      NMS_PROXY_NAME: ${NMS_PROXY_NAME:-proxy-01}
+    volumes:
+      - proxy-spool:/var/lib/nms/spool
+    cap_add:
+      - NET_RAW
+    # host networking is what lets the proxy reach devices on the LAN by their
+    # real addresses and see broadcast traffic. Drop it if the devices are
+    # reachable from the container network.
+    # network_mode: host
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  proxy-spool:
