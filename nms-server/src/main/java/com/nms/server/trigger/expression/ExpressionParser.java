@@ -228,11 +228,15 @@ public class ExpressionParser {
         }
 
         skipWhitespace();
-        ItemReference item = null;
-        if (peek() == '/') {
-            item = parseItemReference();
-            referencedItems.add(item);
+        // Checked before anything else is consumed, so a call written without
+        // one fails saying what is missing rather than complaining about a
+        // parenthesis several characters later.
+        if (peek() != '/') {
+            throw error("function '" + name + "' needs an item reference such as /host/key"
+                    + " as its first argument");
         }
+        ItemReference item = parseItemReference();
+        referencedItems.add(item);
 
         List<Argument> arguments = new ArrayList<>();
         skipWhitespace();
@@ -243,10 +247,6 @@ public class ExpressionParser {
 
         if (!match(")")) {
             throw error("expected ')' to close the call to '" + name + "'");
-        }
-
-        if (item == null) {
-            throw error("function '" + name + "' needs an item reference such as /host/key");
         }
 
         return new Function(name, item, List.copyOf(arguments));

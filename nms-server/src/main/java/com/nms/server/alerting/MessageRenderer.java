@@ -7,6 +7,7 @@ import com.nms.server.domain.InterfaceType;
 import com.nms.server.domain.MediaType;
 import com.nms.server.domain.Problem;
 import com.nms.server.domain.ProblemTag;
+import com.nms.server.util.Durations;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -95,8 +96,8 @@ public class MessageRenderer {
         values.put("EVENT.STATUS", recovery ? "RESOLVED" : "PROBLEM");
         values.put("EVENT.TIME", TIME.format(problem.getClock()));
         values.put("EVENT.DATE", DATE.format(problem.getClock()));
-        values.put("EVENT.AGE", humanDuration(problem.duration()));
-        values.put("EVENT.DURATION", humanDuration(problem.duration()));
+        values.put("EVENT.AGE", Durations.human(problem.duration()));
+        values.put("EVENT.DURATION", Durations.human(problem.duration()));
         values.put("EVENT.OPDATA", problem.getOpdata());
         values.put("EVENT.ACK.STATUS", problem.isAcknowledged() ? "Yes" : "No");
         values.put("EVENT.TAGS", problem.getTags().stream()
@@ -134,21 +135,6 @@ public class MessageRenderer {
 
     private static String formatTag(ProblemTag tag) {
         return tag.getValue().isEmpty() ? tag.getTag() : tag.getTag() + ": " + tag.getValue();
-    }
-
-    /** Renders a duration the way an operator would say it out loud. */
-    static String humanDuration(Duration duration) {
-        long seconds = Math.max(0, duration.getSeconds());
-        if (seconds < 60) {
-            return seconds + "s";
-        }
-        if (seconds < 3600) {
-            return (seconds / 60) + "m " + (seconds % 60) + "s";
-        }
-        if (seconds < 86_400) {
-            return (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
-        }
-        return (seconds / 86_400) + "d " + ((seconds % 86_400) / 3600) + "h";
     }
 
     private static String defaultSubject(boolean recovery) {

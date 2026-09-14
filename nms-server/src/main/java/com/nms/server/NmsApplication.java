@@ -4,6 +4,7 @@ import com.nms.collector.CollectorConfiguration;
 import com.nms.server.repository.SupportRepositories;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -19,7 +20,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * which is what makes horizontal scaling and rolling deployment possible in a
  * hosted environment.
  */
-@SpringBootApplication
+// The default in-memory user is excluded: authentication is entirely
+// token-based, and leaving it enabled prints a generated password at every
+// startup that looks like a real credential and is not one.
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableScheduling
 @EnableAsync
 @Import(CollectorConfiguration.class)
