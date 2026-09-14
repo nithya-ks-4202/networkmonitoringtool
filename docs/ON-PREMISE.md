@@ -286,6 +286,39 @@ docker compose up -d
 Colima does not survive a reboot by default; `colima start` again, or
 `brew services start colima`.
 
+**If Docker Desktop was ever installed on this Mac**, the first pull fails with:
+
+```
+error getting credentials - err: exec: "docker-credential-desktop":
+executable file not found in $PATH
+```
+
+`~/.docker/config.json` still names Docker Desktop's credential helper, and the
+binary went with it. Nothing is wrong with Colima — the CLI is asking a helper
+that no longer exists for credentials it does not need to pull a public image.
+Drop the setting:
+
+```bash
+python3 - <<'EOF'
+import json, pathlib
+p = pathlib.Path.home() / ".docker" / "config.json"
+cfg = json.loads(p.read_text() or "{}")
+if cfg.get("credsStore") == "desktop":
+    del cfg["credsStore"]
+helpers = {k: v for k, v in cfg.get("credHelpers", {}).items() if v != "desktop"}
+if helpers:
+    cfg["credHelpers"] = helpers
+else:
+    cfg.pop("credHelpers", None)
+p.write_text(json.dumps(cfg, indent=2) + "\n")
+print("Removed the Docker Desktop credential helper.")
+EOF
+```
+
+Editing the file by hand works equally well — delete the `"credsStore"` line.
+Do it as JSON rather than with `sed`, though: when that line is the last key,
+removing it leaves a trailing comma and an unparseable file.
+
 **Docker Desktop** is the alternative — download the Apple Silicon or Intel
 build from docker.com. It is heavier and requires a paid subscription for
 larger companies, so check that before installing it at work.
