@@ -6,6 +6,7 @@ import { Problems, useProblemSummary } from './pages/Problems'
 import { Hosts } from './pages/Hosts'
 import { HostDetail } from './pages/HostDetail'
 import { CameraWall } from './pages/CameraWall'
+import { Discovery } from './pages/Discovery'
 import { Login } from './pages/Login'
 
 export function App() {
@@ -25,6 +26,7 @@ export function App() {
           <Route path="/hosts" element={<Hosts />} />
           <Route path="/hosts/:hostId" element={<HostDetail />} />
           <Route path="/cameras" element={<CameraWall />} />
+          <Route path="/discovery" element={<Discovery />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -51,6 +53,7 @@ function Sidebar({ onSignOut }: { onSignOut: () => void }) {
       <NavItem to="/problems" label="Problems" count={urgent} />
       <NavItem to="/hosts" label="Hosts" />
       <NavItem to="/cameras" label="Cameras" />
+      <NavItem to="/discovery" label="Discovery" />
 
       <div style={{ marginTop: 'auto', paddingTop: 16 }}>
         <div className="muted" style={{ fontSize: 12, padding: '0 10px 8px' }}>

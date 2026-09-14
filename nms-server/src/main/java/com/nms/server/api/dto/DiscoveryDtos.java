@@ -66,6 +66,15 @@ public final class DiscoveryDtos {
             Map<String, String> checkResults,
             String suggestedClass,
             String suggestedTemplate,
+            /**
+             * The technical name that promoting this device would use.
+             *
+             * <p>Computed server-side and sent rather than derived again in
+             * the interface, so that adding a device through the form and
+             * adding it through the API cannot produce two different names
+             * for the same device.
+             */
+            String suggestedHost,
             String suggestedName,
             /** The evidence, so an operator can disagree on sight. */
             String reason,

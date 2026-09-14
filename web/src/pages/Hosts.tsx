@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, ApiError } from '../api/client'
+import { HostForm, emptyHostForm, macrosFrom, type HostFormValues } from '../components/HostForm'
 import type { Availability, HostClass } from '../api/types'
 
 const HOST_CLASSES: { value: HostClass | 'ALL'; label: string }[] = [
@@ -15,6 +16,7 @@ const HOST_CLASSES: { value: HostClass | 'ALL'; label: string }[] = [
 export function Hosts() {
   const [hostClass, setHostClass] = useState<HostClass | 'ALL'>('ALL')
   const [search, setSearch] = useState('')
+  const [adding, setAdding] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['hosts', hostClass],
@@ -39,7 +41,12 @@ export function Hosts() {
           <h1 className="page-title">Hosts</h1>
           <div className="page-subtitle">{data ? `${visible.length} of ${data.length}` : 'Loading'}</div>
         </div>
+        <button type="button" className="button" onClick={() => setAdding(true)}>
+          Add host
+        </button>
       </div>
+
+      {adding && <AddHostPanel onClose={() => setAdding(false)} />}
 
       <div className="filter-row">
         <div className="segmented" role="group" aria-label="Filter by host class">
@@ -125,6 +132,83 @@ export function Hosts() {
         </table>
       </div>
     </>
+  )
+}
+
+/**
+ * Adding a host by hand.
+ *
+ * <p>Inline rather than a modal: the form is tall once a camera's settings
+ * are showing, and a dialog that scrolls internally is worse than a panel
+ * that pushes the table down.
+ */
+function AddHostPanel({ onClose }: { onClose: () => void }) {
+  const [values, setValues] = useState<HostFormValues>(emptyHostForm)
+  const queryClient = useQueryClient()
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.createHost({
+        host: values.host.trim(),
+        name: values.name.trim() || undefined,
+        hostClass: values.hostClass,
+        interfaces: [
+          {
+            // One interface carrying the address. The camera template reads
+            // its RTSP and ONVIF ports from macros, so a single interface is
+            // enough and a port chooser here would only be something else to
+            // get wrong.
+            type: 'AGENT',
+            main: true,
+            useIp: true,
+            ip: values.address.trim(),
+            port: values.hostClass === 'CAMERA' ? 80 : 10150,
+          },
+        ],
+        macros: macrosFrom(values),
+        templates: values.templates,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hosts'] })
+      onClose()
+    },
+  })
+
+  const canSubmit = values.host.trim() !== '' && values.address.trim() !== ''
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-title">Add a host</div>
+
+      <HostForm values={values} onChange={setValues} />
+
+      {create.error && (
+        <div className="error-banner">
+          {create.error instanceof ApiError
+            ? create.error.message
+            : (create.error as Error).message}
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 9, marginTop: 12 }}>
+        <button
+          type="button"
+          className="button"
+          disabled={!canSubmit || create.isPending}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? 'Adding…' : 'Add host'}
+        </button>
+        <button type="button" className="button ghost" onClick={onClose}>
+          Cancel
+        </button>
+        {!canSubmit && (
+          <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+            A host name and an address are required.
+          </span>
+        )}
+      </div>
+    </div>
   )
 }
 

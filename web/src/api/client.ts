@@ -1,12 +1,18 @@
 import type {
   CameraStatus,
+  DiscoveredDevice,
+  DiscoveryRule,
+  DiscoveryRuleRequest,
   GraphSeries,
+  HostCreateRequest,
   HostSummary,
   LatestValue,
   Problem,
+  PromoteRequest,
   Session,
   Severity,
   SeverityCounts,
+  TemplateSummary,
 } from './types'
 
 const TOKEN_KEY = 'nms.session'
@@ -176,5 +182,41 @@ export const api = {
   itemHistory(itemId: number, fromIso: string, toIso: string, points = 600): Promise<GraphSeries> {
     const params = new URLSearchParams({ from: fromIso, to: toIso, points: String(points) })
     return request(`/api/monitoring/items/${itemId}/history?${params}`)
+  },
+
+  templates(): Promise<TemplateSummary[]> {
+    return request('/api/templates')
+  },
+
+  createHost(body: HostCreateRequest): Promise<HostSummary> {
+    return request('/api/hosts', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  discoveryRules(): Promise<DiscoveryRule[]> {
+    return request('/api/discovery/rules')
+  },
+
+  createDiscoveryRule(body: DiscoveryRuleRequest): Promise<DiscoveryRule> {
+    return request('/api/discovery/rules', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  deleteDiscoveryRule(ruleId: number): Promise<void> {
+    return request(`/api/discovery/rules/${ruleId}`, { method: 'DELETE' })
+  },
+
+  runDiscoveryRule(ruleId: number): Promise<void> {
+    return request(`/api/discovery/rules/${ruleId}/run`, { method: 'POST' })
+  },
+
+  discoveredDevices(includeMonitored = false): Promise<DiscoveredDevice[]> {
+    return request(`/api/discovery/devices?includeMonitored=${includeMonitored}`)
+  },
+
+  /** Turns a discovered device into a monitored host. */
+  promoteDevice(deviceId: number, body: PromoteRequest = {}): Promise<HostSummary> {
+    return request(`/api/discovery/devices/${deviceId}/host`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   },
 }

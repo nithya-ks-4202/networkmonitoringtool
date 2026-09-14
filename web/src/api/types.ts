@@ -125,3 +125,98 @@ export interface GraphSeries {
 }
 
 export type SeverityCounts = Record<Severity, number>
+
+/** A template that can be linked to a host. */
+export interface TemplateSummary {
+  id: number
+  name: string
+  description: string
+  hostClass: HostClass
+  itemCount: number
+  triggerCount: number
+}
+
+/** Creating a host. Everything but the first three fields is optional. */
+export interface HostCreateRequest {
+  host: string
+  hostClass: HostClass
+  interfaces: {
+    type: 'AGENT' | 'SNMP' | 'HTTP' | 'RTSP' | 'ONVIF'
+    main: boolean
+    useIp: boolean
+    ip?: string
+    dns?: string
+    port: number
+    snmpCommunity?: string
+  }[]
+  name?: string
+  description?: string
+  groups?: string[]
+  macros?: Record<string, string>
+  templates?: string[]
+}
+
+/** A standing instruction to sweep a range of addresses. */
+export interface DiscoveryRule {
+  id: number
+  name: string
+  ipRange: string
+  addressCount: number
+  delaySeconds: number
+  concurrency: number
+  status: string
+  nextRunAt: string | null
+  ping: boolean
+  tcpPorts: string
+  snmp: boolean
+  onvif: boolean
+  pendingDevices: number
+}
+
+export interface DiscoveryRuleRequest {
+  name: string
+  ipRange: string
+  delaySeconds?: number
+  concurrency?: number
+  ping?: boolean
+  tcpPorts?: string
+  snmp?: boolean
+  snmpCommunity?: string
+  onvif?: boolean
+}
+
+/**
+ * A device a sweep found.
+ *
+ * <p>The `suggested*` fields are a guess, and `reason` is the evidence behind
+ * it -- shown so an operator can disagree before it becomes a host.
+ */
+export interface DiscoveredDevice {
+  id: number
+  ruleId: number
+  ruleName: string
+  ip: string
+  dns: string
+  status: 'UP' | 'DOWN'
+  firstSeenAt: string
+  lastSeenAt: string
+  checkResults: Record<string, string>
+  suggestedClass: HostClass
+  suggestedTemplate: string | null
+  /** The technical name promoting would use. Computed by the server so the
+   *  form and the API cannot disagree about it. */
+  suggestedHost: string
+  suggestedName: string | null
+  reason: string
+  hostId: number | null
+  hostName: string | null
+}
+
+export interface PromoteRequest {
+  host?: string
+  name?: string
+  hostClass?: HostClass
+  templates?: string[]
+  groups?: string[]
+  macros?: Record<string, string>
+}

@@ -167,6 +167,7 @@ public class DiscoveryService {
                     device.getCheckResults(),
                     guess.hostClass().name(),
                     guess.suggestedTemplate(),
+                    defaultTechnicalName(device, guess),
                     suggestedName(device, guess),
                     guess.reason(),
                     device.getHost() == null ? null : device.getHost().getId(),
