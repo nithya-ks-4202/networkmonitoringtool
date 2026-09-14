@@ -38,6 +38,11 @@ runbook: sizing, TLS, backups, upgrades, remote sites and troubleshooting.
 
 ### Locally, with Docker Compose
 
+Needs a Docker runtime. On Linux that is Docker Engine
+(`curl -fsSL https://get.docker.com | sudo sh`); on a **Mac** it is Colima or
+Docker Desktop, because macOS runs Linux containers in a VM and has no engine of
+its own — see [docs/ON-PREMISE.md](docs/ON-PREMISE.md#running-it-on-the-mac).
+
 ```bash
 cp .env.example .env
 # Set NMS_DB_PASSWORD and NMS_JWT_SECRET. Nothing has a working default.

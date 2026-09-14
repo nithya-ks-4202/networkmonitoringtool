@@ -30,17 +30,25 @@ So the Mac's only job is to push code:
 git push
 ```
 
-Everything below happens **on the Linux server**, over SSH.
+You do not need Docker on the Mac at all for this. If you want to run the stack
+locally as well, see [Running it on the Mac](#running-it-on-the-mac) at the
+bottom — the install is completely different there, and the commands in this
+section will not work.
+
+> Everything in steps 1–4 runs **on the Linux server**, over SSH.
 
 ### 1. Install Docker
 
-Docker Engine, not Docker Desktop — Desktop is a Mac and Windows product. The
-official script handles every mainstream distribution:
+Docker Engine. The official script handles every mainstream distribution:
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
 sudo systemctl enable --now docker
 ```
+
+That script is Linux-only. Run it on a Mac and it stops with
+`Unsupported operating system 'macOS'` — which means you are on the wrong
+machine, not that anything is broken.
 
 Add yourself to the `docker` group so you are not typing `sudo` all day. Log out
 and back in afterwards, as group membership is only read at login:
@@ -221,6 +229,55 @@ Check per-item history retention, and whether TimescaleDB is active:
 docker compose exec db psql -U nms -d nms -c "SELECT extname FROM pg_extension;"
 ```
 No `timescaledb` means the tables are uncompressed and retention is delete-based.
+
+## Running it on the Mac
+
+Only needed if you want the stack running locally as well as on the server. The
+deployment does not require it.
+
+macOS cannot run Linux containers directly, so anything you install here is a
+Linux VM with Docker inside it. That is why `get.docker.com` refuses to run —
+there is no Docker Engine for macOS to install.
+
+**Colima** is the lighter of the two options, and has no licensing conditions:
+
+```bash
+brew install colima docker docker-compose
+
+# Compose is a CLI plugin and Homebrew does not wire it up for you.
+# Without this, `docker compose` reports "is not a docker command".
+mkdir -p ~/.docker/cli-plugins
+ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" \
+        ~/.docker/cli-plugins/docker-compose
+
+# The VM's limits are its own, not the Mac's. The defaults (2 CPU, 2 GB) are
+# too small -- the Maven build inside the server image will be killed.
+colima start --cpus 4 --memory 8 --disk 60
+
+docker compose version
+```
+
+Then the same commands as the server:
+
+```bash
+cp .env.example .env && $EDITOR .env
+docker compose up -d
+```
+
+Colima does not survive a reboot by default; `colima start` again, or
+`brew services start colima`.
+
+**Docker Desktop** is the alternative — download the Apple Silicon or Intel
+build from docker.com. It is heavier and requires a paid subscription for
+larger companies, so check that before installing it at work.
+
+Two caveats on a Mac, both consequences of the VM rather than faults:
+
+- `network_mode: host` does not work for the proxy. Containers sit behind the
+  VM's network, so a proxy running on the Mac cannot reach LAN devices by their
+  real addresses. Run proxies on Linux.
+- Images built here are `arm64` on Apple Silicon and will not run on an x86
+  server. Let the server build its own, as above.
 
 ## When to move off a single box
 
