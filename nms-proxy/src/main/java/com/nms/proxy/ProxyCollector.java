@@ -68,6 +68,17 @@ public class ProxyCollector {
 
     @PostConstruct
     void start() {
+        // Checked before anything else. A blank token produces a 401 on every
+        // request, and "the server rejected this proxy's token" sends an
+        // operator looking for a configuration mistake on the server rather
+        // than the missing value in front of them.
+        if (properties.getToken() == null || properties.getToken().isBlank()) {
+            throw new IllegalStateException(
+                    "No enrolment token is configured. Create a proxy in the interface "
+                            + "(Proxies -> Create), copy the token it shows once, and set it as "
+                            + "NMS_PROXY_TOKEN.");
+        }
+
         workers = new ThreadPoolExecutor(
                 properties.getPollerThreads(), properties.getPollerThreads(),
                 60, TimeUnit.SECONDS,

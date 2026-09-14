@@ -98,7 +98,14 @@ services:
     profiles: ["proxy"]
     environment:
       NMS_SERVER_URL: ${NMS_PROXY_SERVER_URL:-http://server:8080}
-      NMS_PROXY_TOKEN: ${NMS_PROXY_TOKEN:?set NMS_PROXY_TOKEN in .env}
+      # Deliberately not the `:?` required form. Compose evaluates those while
+      # parsing the file, before profiles are applied -- so requiring it here
+      # would make every `docker compose up` fail for people who are not running
+      # a proxy at all, including the very first one. And it cannot be set in
+      # advance anyway: the token is issued by the running server.
+      #
+      # The proxy refuses to start with a blank token and says so plainly.
+      NMS_PROXY_TOKEN: ${NMS_PROXY_TOKEN:-}
       NMS_PROXY_NAME: ${NMS_PROXY_NAME:-proxy-01}
     volumes:
       - proxy-spool:/var/lib/nms/spool
