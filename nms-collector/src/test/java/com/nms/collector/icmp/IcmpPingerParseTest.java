@@ -130,4 +130,142 @@ class IcmpPingerParseTest {
         assertThat(result.reachable()).isFalse();
         assertThat(result.error()).isEqualTo("no response");
     }
+
+    @Test
+    void parsesWindowsSuccess() {
+        String output = """
+                Pinging 10.0.0.5 with 32 bytes of data:
+                Reply from 10.0.0.5: bytes=32 time=11ms TTL=128
+                Reply from 10.0.0.5: bytes=32 time=12ms TTL=128
+                Reply from 10.0.0.5: bytes=32 time=10ms TTL=128
+
+                Ping statistics for 10.0.0.5:
+                    Packets: Sent = 3, Received = 3, Lost = 0 (0% loss),
+                Approximate round trip times in milli-seconds:
+                    Minimum = 10ms, Maximum = 12ms, Average = 11ms
+                """;
+
+        PingResult result = IcmpPinger.parse(output, 3);
+
+        assertThat(result.reachable()).isTrue();
+        assertThat(result.received()).isEqualTo(3);
+        assertThat(result.lossPercent()).isZero();
+        assertThat(result.minSeconds()).isCloseTo(0.010, TOLERANCE);
+        assertThat(result.maxSeconds()).isCloseTo(0.012, TOLERANCE);
+        assertThat(result.avgSeconds()).isCloseTo(0.011, TOLERANCE);
+    }
+
+    /**
+     * Windows prints minimum, maximum, average -- iputils prints min, avg, max.
+     * Reading one as the other swaps a host's typical latency with its worst,
+     * which would quietly mis-fire every latency trigger rather than fail.
+     */
+    @Test
+    void doesNotConfuseWindowsFieldOrderWithIputils() {
+        String output = """
+                Ping statistics for 10.0.0.5:
+                    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+                Approximate round trip times in milli-seconds:
+                    Minimum = 1ms, Maximum = 300ms, Average = 20ms
+                """;
+
+        PingResult result = IcmpPinger.parse(output, 4);
+
+        assertThat(result.avgSeconds()).isCloseTo(0.020, TOLERANCE);
+        assertThat(result.maxSeconds()).isCloseTo(0.300, TOLERANCE);
+        assertThat(result.avgSeconds()).isLessThan(result.maxSeconds());
+    }
+
+    @Test
+    void parsesWindowsPartialLoss() {
+        String output = """
+                Ping statistics for 10.0.0.5:
+                    Packets: Sent = 4, Received = 3, Lost = 1 (25% loss),
+                Approximate round trip times in milli-seconds:
+                    Minimum = 10ms, Maximum = 14ms, Average = 12ms
+                """;
+
+        PingResult result = IcmpPinger.parse(output, 4);
+
+        assertThat(result.reachable()).isTrue();
+        assertThat(result.lossPercent()).isEqualTo(25.0);
+        assertThat(result.received()).isEqualTo(3);
+    }
+
+    /**
+     * Total loss on Windows omits the timings block altogether, rather than
+     * printing zeroes.
+     */
+    @Test
+    void parsesWindowsTotalLoss() {
+        String output = """
+                Pinging 10.0.0.9 with 32 bytes of data:
+                Request timed out.
+                Request timed out.
+
+                Ping statistics for 10.0.0.9:
+                    Packets: Sent = 2, Received = 0, Lost = 2 (100% loss),
+                """;
+
+        PingResult result = IcmpPinger.parse(output, 2);
+
+        assertThat(result.reachable()).isFalse();
+        assertThat(result.received()).isZero();
+        assertThat(result.lossPercent()).isEqualTo(100.0);
+        assertThat(result.avgSeconds()).isZero();
+    }
+
+    /**
+     * Windows translates this output. The figures and punctuation are what the
+     * parser matches on, so a German-language server reports real numbers
+     * rather than falling back to "unreachable" on every host.
+     */
+    @Test
+    void parsesLocalisedWindowsOutput() {
+        String output = """
+                Ping-Statistik für 10.0.0.5:
+                    Pakete: Gesendet = 4, Empfangen = 4, Verloren = 0 (0% Verlust),
+                Ca. Zeitangaben in Millisek.:
+                    Minimum = 10ms, Maximum = 12ms, Mittelwert = 11ms
+                """;
+
+        PingResult result = IcmpPinger.parse(output, 4);
+
+        assertThat(result.reachable()).isTrue();
+        assertThat(result.lossPercent()).isZero();
+        assertThat(result.avgSeconds()).isCloseTo(0.011, TOLERANCE);
+    }
+
+    @Test
+    void buildsWindowsArgumentsRatherThanIputilsOnes() {
+        // -n means "numeric output" to iputils and "how many echo requests" to
+        // Windows. Sending the iputils form to PING.EXE does not fail; it
+        // pings once and reports a host as up on a single packet.
+        IcmpPinger windows = new IcmpPinger(
+                java.time.Duration.ofSeconds(10), "C:\\Windows\\System32\\PING.EXE", true);
+
+        java.util.List<String> command = windows.buildCommand(
+                "10.0.0.5", 3, 0.2, 56, java.time.Duration.ofSeconds(2), 5);
+
+        assertThat(command).containsSequence("-n", "3");
+        // Milliseconds on Windows, seconds on iputils.
+        assertThat(command).containsSequence("-w", "2000");
+        assertThat(command).containsSequence("-l", "56");
+        assertThat(command).doesNotContain("-c", "-q", "-i", "-W", "-s");
+        assertThat(command.get(command.size() - 1)).isEqualTo("10.0.0.5");
+    }
+
+    @Test
+    void buildsIputilsArgumentsOnLinux() {
+        IcmpPinger linux = new IcmpPinger(
+                java.time.Duration.ofSeconds(10), "/bin/ping", false);
+
+        java.util.List<String> command = linux.buildCommand(
+                "10.0.0.5", 3, 0.2, 56, java.time.Duration.ofSeconds(2), 5);
+
+        assertThat(command).containsSequence("-c", "3");
+        assertThat(command).containsSequence("-W", "2");
+        assertThat(command).containsSequence("-s", "56");
+        assertThat(command.get(command.size() - 1)).isEqualTo("10.0.0.5");
+    }
 }

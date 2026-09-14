@@ -106,11 +106,11 @@ public class OnvifPoller implements Poller {
         } catch (IOException e) {
             // The camera is not answering ONVIF. For a status item that is a
             // measured 0; for an informational item there is nothing to store.
-            log.debug("ONVIF {} failed for {}: {}", operation, endpoint, e.getMessage());
+            log.debug("ONVIF {} failed for {}: {}", operation, endpoint, com.nms.collector.Failures.describe(e));
             if (isStatusItem(request)) {
                 return CheckResult.ok(request.itemId(), 0L, ItemValueType.UNSIGNED);
             }
-            return CheckResult.failed(request.itemId(), "ONVIF unreachable: " + e.getMessage());
+            return CheckResult.failed(request.itemId(), "ONVIF unreachable: " + com.nms.collector.Failures.describe(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return CheckResult.failed(request.itemId(), "interrupted during ONVIF check");

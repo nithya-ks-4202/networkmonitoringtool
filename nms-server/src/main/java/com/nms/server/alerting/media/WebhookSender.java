@@ -102,7 +102,7 @@ public class WebhookSender implements MediaSender {
             throw new PermanentDeliveryException(detail);
 
         } catch (IOException e) {
-            throw new TransientDeliveryException("could not reach " + hostOf(url) + ": " + e.getMessage(), e);
+            throw new TransientDeliveryException("could not reach " + hostOf(url) + ": " + com.nms.collector.Failures.describe(e), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new TransientDeliveryException("interrupted while delivering the webhook", e);

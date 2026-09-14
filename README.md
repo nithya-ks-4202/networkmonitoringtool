@@ -33,14 +33,22 @@ not a finished replacement for a product with twenty-five years behind it.
 
 ## Running it
 
+**Running it on your own hardware?** [docs/ON-PREMISE.md](docs/ON-PREMISE.md) is the
+runbook: sizing, TLS, backups, upgrades, remote sites and troubleshooting.
+
+**On Windows?** [docs/WINDOWS.md](docs/WINDOWS.md) covers the server under WSL2,
+and building the agent and proxy as `.exe`/`.msi` installers that run as Windows
+services.
+
 ### Locally, with Docker Compose
 
-```bash
-cp .env.example .env
-# Set NMS_DB_PASSWORD and NMS_JWT_SECRET. Nothing has a working default.
-#   openssl rand -base64 24   # database password
-#   openssl rand -base64 48   # JWT secret
+Needs a Docker runtime. On Linux that is Docker Engine
+(`curl -fsSL https://get.docker.com | sudo sh`); on a **Mac** it is Colima or
+Docker Desktop, because macOS runs Linux containers in a VM and has no engine of
+its own — see [docs/ON-PREMISE.md](docs/ON-PREMISE.md#running-it-on-the-mac).
 
+```bash
+./deploy/init-env.sh            # writes .env with generated secrets
 docker compose up -d
 docker compose logs -f server   # the generated admin password is printed once
 ```
@@ -201,15 +209,37 @@ severity filtering and ordering; the agent answering its wire protocol with real
 CPU, memory, filesystem, load and process values; the web interface rendered in a
 browser across every page.
 
-**Verified by test:** 65 tests over the collector pollers and the trigger
-expression engine — parser, evaluator, and the propagation of "no data" through
-both.
+**The full proxy path, end to end:** creating a proxy through the API, token
+issue and rejection, enrolment, configuration fetch, local polling, upload, and
+the resulting values driving trigger evaluation to open the right problems —
+including a trigger dependency correctly *not* suppressing faults whose master
+trigger was healthy.
 
-**Not verified:** the Dockerfiles and Compose file were not built (no Docker
-daemon in the build environment) and the Helm chart was not rendered by `helm
-template` (helm could not be downloaded). Their YAML parses and the templates are
-structurally sound, but they have not been run. SNMP, ONVIF and the proxy upload
-path have unit coverage and no integration test against real hardware.
+**Backup and restore:** `deploy/backup.sh` run against a live database, and the
+dump restored into a fresh one with data intact.
+
+**Verified by test:** 73 tests over the collector pollers, the failure
+describer, and the trigger expression engine — parser, evaluator, and the
+propagation of "no data" through both.
+
+**The server and proxy images, built and run:** both Dockerfiles built, both
+containers started against PostgreSQL 16 and reported healthy. The server
+migrated a fresh database, answered the API, and polled a host linked to the
+ICMP template on schedule — `icmpping=1`, `icmppingloss=0`, `icmppingsec=0.0002`
+written to history. The proxy refused to start without a token, enrolled with
+one, and its heartbeat health check reported healthy.
+
+Building them is what found the two defects fixed in `3ab35c0` — in particular
+that the server's poller claimed nothing at all, which no test caught and
+reading the code did not reveal.
+
+**Not verified:** the web image's runtime stage. Its build stage runs (`npm ci`
+and `npm run build` produce `web/dist`), but nginx's template rendering and the
+`/api` proxy pass have not executed in a container. The Helm chart was not
+rendered by `helm template` either; its templates are structurally checked only.
+SNMP and ONVIF have unit coverage and no integration test against real hardware.
+There is no API for listing templates — they are linked by name when a host is
+created, and the interface offers no way to browse them.
 
 ## Licence
 

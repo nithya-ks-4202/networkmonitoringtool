@@ -54,6 +54,16 @@ public class ProxyProperties {
     /** How long to wait for the server before treating a request as failed. */
     private Duration requestTimeout = Duration.ofSeconds(30);
 
+    /**
+     * Touched whenever the server is successfully reached.
+     *
+     * <p>Stands in for a health endpoint. The proxy listens on nothing, so the
+     * container runtime checks the age of this file instead -- which also
+     * distinguishes "running" from "running and actually talking to the
+     * server", the failure that matters.
+     */
+    private String heartbeatFile = "./heartbeat";
+
     public String getServerUrl() {
         return serverUrl;
     }
@@ -135,5 +145,13 @@ public class ProxyProperties {
 
     public void setRequestTimeout(Duration requestTimeout) {
         this.requestTimeout = requestTimeout;
+    }
+
+    public String getHeartbeatFile() {
+        return heartbeatFile;
+    }
+
+    public void setHeartbeatFile(String heartbeatFile) {
+        this.heartbeatFile = heartbeatFile;
     }
 }

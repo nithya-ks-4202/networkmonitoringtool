@@ -19,6 +19,16 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- The protocol records carry Instant and Duration, which Jackson cannot
+         handle without this module. Declared here rather than in each consumer
+         because it is a requirement of these types, not a preference of the
+         things that use them: the server picks it up through Spring Boot and
+         would work regardless, while the proxy and agent do not and would fail
+         at the first message they tried to read. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

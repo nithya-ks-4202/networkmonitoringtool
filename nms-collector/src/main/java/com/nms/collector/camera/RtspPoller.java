@@ -103,7 +103,7 @@ public class RtspPoller implements Poller {
             }
             if ("rtsp.status".equals(baseKey(request.key()))) {
                 return CheckResult.ok(request.itemId(),
-                        "unreachable: " + e.getMessage(), ItemValueType.CHARACTER);
+                        "unreachable: " + com.nms.collector.Failures.describe(e), ItemValueType.CHARACTER);
             }
             return CheckResult.ok(request.itemId(), 0L, ItemValueType.UNSIGNED);
         }

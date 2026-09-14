@@ -1,10 +1,8 @@
 package com.nms.server.repository;
 
 import com.nms.server.domain.Item;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,8 +25,13 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
      *
      * <p>Templates and prototypes are excluded at the query rather than
      * filtered afterwards, so a large template library costs nothing here.
+     *
+     * <p>The locking is written into the SQL rather than declared with
+     * {@code @Lock}. Hibernate rejects a lock mode on a native query outright
+     * -- and it could not express this one anyway: the lock has to be
+     * {@code OF i}, so that the join to {@code host} does not lock every host
+     * row as well and block configuration edits behind the poller.
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(value = """
             SELECT i.* FROM item i
             JOIN host h ON h.host_id = i.host_id

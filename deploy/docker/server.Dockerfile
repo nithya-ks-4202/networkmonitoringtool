@@ -6,7 +6,14 @@
 # to audit.
 # ---------------------------------------------------------------------------
 
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Overridable so the images can be built against a registry mirror. Sites that
+# cannot reach Docker Hub -- an air-gapped network, or a company that pulls
+# everything through Artifactory -- retag these two upstream and point the build
+# at them, rather than having to patch this file on every upgrade.
+ARG MAVEN_IMAGE=maven:3.9-eclipse-temurin-21
+ARG RUNTIME_IMAGE=eclipse-temurin:21-jre-jammy
+
+FROM ${MAVEN_IMAGE} AS build
 WORKDIR /build
 
 # Dependencies resolve in their own layer, keyed on the POMs alone. Editing a
@@ -26,7 +33,7 @@ RUN mvn -B -q -pl nms-server -am package -DskipTests
 
 # ---------------------------------------------------------------------------
 
-FROM eclipse-temurin:21-jre-jammy
+FROM ${RUNTIME_IMAGE}
 
 # iputils-ping is not optional. Raw ICMP sockets need privileges the JVM cannot
 # request, so the collector shells out to ping; without it every ICMP check

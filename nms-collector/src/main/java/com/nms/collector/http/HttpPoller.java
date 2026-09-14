@@ -2,6 +2,7 @@ package com.nms.collector.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nms.collector.Failures;
 import com.nms.collector.Poller;
 import com.nms.common.CheckRequest;
 import com.nms.common.CheckResult;
@@ -107,7 +108,7 @@ public class HttpPoller implements Poller {
                 case "responsetime" -> CheckResult.ok(request.itemId(), 0.0, ItemValueType.FLOAT);
                 case "statuscode" -> CheckResult.ok(request.itemId(), 0L, ItemValueType.UNSIGNED);
                 case "certexpiry", "jsonpath", "body" ->
-                        CheckResult.failed(request.itemId(), "HTTP request failed: " + e.getMessage());
+                        CheckResult.failed(request.itemId(), "HTTP request failed: " + Failures.describe(e));
                 default -> CheckResult.ok(request.itemId(), 0L, ItemValueType.UNSIGNED);
             };
         } catch (InterruptedException e) {
@@ -214,7 +215,7 @@ public class HttpPoller implements Poller {
             long days = ChronoUnit.DAYS.between(Instant.now(), certificate.getNotAfter().toInstant());
             return CheckResult.ok(request.itemId(), days, ItemValueType.UNSIGNED);
         } catch (javax.net.ssl.SSLPeerUnverifiedException e) {
-            return CheckResult.failed(request.itemId(), "TLS peer unverified: " + e.getMessage());
+            return CheckResult.failed(request.itemId(), "TLS peer unverified: " + Failures.describe(e));
         }
     }
 

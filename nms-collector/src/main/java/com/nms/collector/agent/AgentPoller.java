@@ -63,7 +63,7 @@ public class AgentPoller implements Poller {
 
         } catch (IOException e) {
             return CheckResult.failed(request.itemId(),
-                    "agent at " + request.address() + ":" + port + " did not answer: " + e.getMessage());
+                    "agent at " + request.address() + ":" + port + " did not answer: " + com.nms.collector.Failures.describe(e));
         }
     }
 

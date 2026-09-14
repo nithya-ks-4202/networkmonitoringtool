@@ -33,18 +33,14 @@ nms:
 
     request-timeout: ${NMS_PROXY_REQUEST_TIMEOUT:30s}
 
+    # Touched whenever the server is reached. Stands in for a health
+    # endpoint: the proxy listens on nothing, so the container runtime
+    # checks this file's age instead.
+    heartbeat-file: ${NMS_PROXY_HEARTBEAT_FILE:./heartbeat}
+
   collector:
     icmp:
       cache-ttl-seconds: 10
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: always
 
 logging:
   level:

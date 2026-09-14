@@ -17,7 +17,11 @@ services:
     # convert the history tables into compressed hypertables. Plain postgres:16
     # also works -- the schema falls back automatically -- but retention then
     # costs a delete rather than a chunk drop.
-    image: timescale/timescaledb:latest-pg16
+    #
+    # Overridable so a site that pulls everything through its own registry can
+    # retag this and set NMS_DB_IMAGE, rather than editing a tracked file that
+    # the next `git pull` will conflict with.
+    image: ${NMS_DB_IMAGE:-timescale/timescaledb:latest-pg16}
     environment:
       POSTGRES_DB: ${NMS_DB_NAME:-nms}
       POSTGRES_USER: ${NMS_DB_USER:-nms}
@@ -50,6 +54,9 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/server.Dockerfile
+      args:
+        MAVEN_IMAGE: ${NMS_MAVEN_IMAGE:-maven:3.9-eclipse-temurin-21}
+        RUNTIME_IMAGE: ${NMS_JRE_IMAGE:-eclipse-temurin:21-jre-jammy}
     depends_on:
       db:
         condition: service_healthy
@@ -78,6 +85,9 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/web.Dockerfile
+      args:
+        NODE_IMAGE: ${NMS_NODE_IMAGE:-node:22-alpine}
+        NGINX_IMAGE: ${NMS_NGINX_IMAGE:-nginx:1.27-alpine}
     depends_on:
       - server
     environment:
@@ -95,10 +105,20 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/proxy.Dockerfile
+      args:
+        MAVEN_IMAGE: ${NMS_MAVEN_IMAGE:-maven:3.9-eclipse-temurin-21}
+        RUNTIME_IMAGE: ${NMS_JRE_IMAGE:-eclipse-temurin:21-jre-jammy}
     profiles: ["proxy"]
     environment:
       NMS_SERVER_URL: ${NMS_PROXY_SERVER_URL:-http://server:8080}
-      NMS_PROXY_TOKEN: ${NMS_PROXY_TOKEN:?set NMS_PROXY_TOKEN in .env}
+      # Deliberately not the `:?` required form. Compose evaluates those while
+      # parsing the file, before profiles are applied -- so requiring it here
+      # would make every `docker compose up` fail for people who are not running
+      # a proxy at all, including the very first one. And it cannot be set in
+      # advance anyway: the token is issued by the running server.
+      #
+      # The proxy refuses to start with a blank token and says so plainly.
+      NMS_PROXY_TOKEN: ${NMS_PROXY_TOKEN:-}
       NMS_PROXY_NAME: ${NMS_PROXY_NAME:-proxy-01}
     volumes:
       - proxy-spool:/var/lib/nms/spool
