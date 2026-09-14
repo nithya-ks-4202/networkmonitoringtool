@@ -18,10 +18,11 @@ through on-premise collectors.
 | Actions, escalation ladders, email / Slack / Teams / PagerDuty / webhook | Working |
 | Maintenance windows and problem suppression | Working |
 | On-premise proxy with store-and-forward buffering | Working |
-| Web interface: overview, problems, hosts, camera wall, graphs | Working |
+| Web interface: overview, problems, hosts, camera wall, graphs, discovery | Working |
+| Adding hosts through the interface, with template and camera settings | Working |
+| Network discovery: sweep a range, classify what answers, add it | Working |
 | Multi-tenancy in the data model | Working |
 | Low-level discovery (creating items from a discovery rule) | **Not implemented** |
-| Network discovery (scanning a subnet for new devices) | **Not implemented** |
 | Network maps, SNMP traps, IPMI, JMX collection | **Not implemented** |
 
 The schema and domain model cover the unimplemented areas, and the interfaces
@@ -50,7 +51,11 @@ its own — see [docs/ON-PREMISE.md](docs/ON-PREMISE.md#running-it-on-the-mac).
 ```bash
 ./deploy/init-env.sh            # writes .env with generated secrets
 docker compose up -d
-docker compose logs -f server   # the generated admin password is printed once
+
+# The generated admin password. Printed once, at the first start against an
+# empty database -- so read it from the log rather than waiting for it to
+# scroll past.
+docker compose logs server | grep -A 4 "administrator account"
 ```
 
 The interface is then on <http://localhost:3000>.
@@ -153,6 +158,36 @@ agent.server.url=https://monitoring.example.com
 
 Then create a host named `web-01` and link **Template: Linux by agent**.
 
+## Finding what is on the network
+
+**Discovery → New scan.** Give it a range — `10.30.5.1-254`, `10.30.5.0/24`, a
+single address, or several separated by commas — and it sweeps them, reporting
+what answered and what each device looks like.
+
+It does not create hosts by itself. It shows you the evidence ("RTSP (554) is
+open", "answered ONVIF", "SNMP description looks like a camera") and you press
+**Monitor** on the ones you want, correcting the suggestion first if it is
+wrong. Automatic creation sounds convenient right up to the scan that silently
+adds three hundred laptops and a printer to the estate.
+
+Turn on the **ONVIF** probe when you are looking for cameras: it is the one
+signal that is conclusive rather than suggestive, because nothing else
+implements it. **SNMP** is worth enabling on a mixed network — it names the
+device, which is usually the name the network team already calls it by.
+
+Two things worth knowing before pointing it at a production VLAN:
+
+- Sweeps are deliberately slow, 32 addresses at a time by default. This is the
+  only part of the platform that sends traffic to machines it has never been
+  told about, and a fast sweep of an unfamiliar network is indistinguishable
+  from a port scan.
+- Ranges over 65,536 addresses are refused. A `/8` at a realistic rate takes
+  days, so accepting it would mean a scan that never finishes.
+
+If the range is not routable from the server — which is normal for an isolated
+camera VLAN — no configuration fixes that. Run a proxy inside the network
+instead.
+
 ## Cameras
 
 Create a host with class `Camera` and link **Template: IP camera**. It brings
@@ -201,6 +236,12 @@ Requires JDK 21 and Node 22.
 ## Verification status
 
 Honest account of what has and has not been exercised.
+
+**Discovery and host creation, verified in a browser:** creating a scan,
+sweeping a range, four devices found and classified, promoting one with the
+suggested name and template, the device dropping off the pending list
+afterwards, and adding a second host by hand through the form — including the
+camera settings and the per-vendor stream-path shortcuts.
 
 **Verified by running it:** the schema against PostgreSQL 16 including the
 TimescaleDB fallback path; server startup, migrations and the REST API; host

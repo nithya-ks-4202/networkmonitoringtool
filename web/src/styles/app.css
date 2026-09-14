@@ -549,6 +549,18 @@ body {
   width: 100%;
 }
 
+/*
+ * Checkboxes and radios are exempt from the rule above. It exists for text
+ * inputs, but it matched these too -- stretching the box to the field width,
+ * which renders the tick floating in the middle of the row with its label
+ * pushed to the far right.
+ */
+.field input[type='checkbox'],
+.field input[type='radio'] {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .acknowledged {
   color: var(--status-good);
 }

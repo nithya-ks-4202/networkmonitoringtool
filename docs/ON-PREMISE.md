@@ -72,8 +72,15 @@ git clone <your-repo> /opt/nms && cd /opt/nms
 ./deploy/init-env.sh             # writes .env with generated secrets
 
 docker compose up -d             # first run builds the images; allow a few minutes
-docker compose logs -f server    # the admin password is printed once
+
+# The generated admin password, printed once at the first start.
+docker compose logs server | grep -A 4 "administrator account"
 ```
+
+Grep for `administrator account`, not for `admin`: the password is on its own
+line and does not contain that word, so the obvious search hides exactly the
+line you wanted. If you have already lost it, see **Resetting the admin
+password** under Troubleshooting.
 
 No `sudo` on any of that. The files belong to you, and running Compose as root
 leaves a `.env` and build cache that you then cannot edit.
@@ -230,6 +237,37 @@ Check for the same damage elsewhere while you are there — `ls -la` for anythin
 owned by `root`, particularly `.env`, which the server needs to read and you
 need to edit.
 
+**Resetting the admin password, or finding it after it scrolled away.**
+It is still in the container log, as long as that container has not been
+recreated:
+
+```bash
+docker compose logs server | grep -A 4 "administrator account"
+```
+
+Grep for `administrator account` rather than `admin`. The password sits on its
+own line and does not contain the word, so searching for `admin` returns the
+username and hides the password.
+
+If it is genuinely gone, the account can be recreated. The bootstrap runs only
+when the tenant has no users at all, so the existing one has to go first —
+**this deletes every account**, which is fine on a fresh install and is not
+what you want on an established one:
+
+```bash
+docker compose stop server
+docker compose exec -T db psql -U nms -d nms \
+  -c "DELETE FROM app_user WHERE tenant_id = 1;"
+
+echo 'NMS_ADMIN_PASSWORD=<the password you want>' >> .env
+docker compose up -d server
+```
+
+Nothing else is lost: hosts, items, history and problems are all independent of
+the user table, and the rows that do reference a user either cascade with it
+(preferences, media) or are set to null (acknowledgements keep their text and
+lose the attribution).
+
 **Every ICMP check reports down, but the devices are up.**
 `ping` is missing or `NET_RAW` was not granted, so checks fell back to a TCP probe. Check the server log at startup for `No ping binary found`.
 
@@ -285,6 +323,39 @@ docker compose up -d
 
 Colima does not survive a reboot by default; `colima start` again, or
 `brew services start colima`.
+
+**If Docker Desktop was ever installed on this Mac**, the first pull fails with:
+
+```
+error getting credentials - err: exec: "docker-credential-desktop":
+executable file not found in $PATH
+```
+
+`~/.docker/config.json` still names Docker Desktop's credential helper, and the
+binary went with it. Nothing is wrong with Colima — the CLI is asking a helper
+that no longer exists for credentials it does not need to pull a public image.
+Drop the setting:
+
+```bash
+python3 - <<'EOF'
+import json, pathlib
+p = pathlib.Path.home() / ".docker" / "config.json"
+cfg = json.loads(p.read_text() or "{}")
+if cfg.get("credsStore") == "desktop":
+    del cfg["credsStore"]
+helpers = {k: v for k, v in cfg.get("credHelpers", {}).items() if v != "desktop"}
+if helpers:
+    cfg["credHelpers"] = helpers
+else:
+    cfg.pop("credHelpers", None)
+p.write_text(json.dumps(cfg, indent=2) + "\n")
+print("Removed the Docker Desktop credential helper.")
+EOF
+```
+
+Editing the file by hand works equally well — delete the `"credsStore"` line.
+Do it as JSON rather than with `sed`, though: when that line is the last key,
+removing it leaves a trailing comma and an unparseable file.
 
 **Docker Desktop** is the alternative — download the Apple Silicon or Intel
 build from docker.com. It is heavier and requires a paid subscription for
