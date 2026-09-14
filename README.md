@@ -36,6 +36,10 @@ not a finished replacement for a product with twenty-five years behind it.
 **Running it on your own hardware?** [docs/ON-PREMISE.md](docs/ON-PREMISE.md) is the
 runbook: sizing, TLS, backups, upgrades, remote sites and troubleshooting.
 
+**On Windows?** [docs/WINDOWS.md](docs/WINDOWS.md) covers the server under WSL2,
+and building the agent and proxy as `.exe`/`.msi` installers that run as Windows
+services.
+
 ### Locally, with Docker Compose
 
 Needs a Docker runtime. On Linux that is Docker Engine

@@ -1,6 +1,7 @@
 package com.nms.proxy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nms.collector.Failures;
 import com.nms.common.CheckResult;
 import com.nms.common.protocol.ProxyConfigResponse;
 import com.nms.common.protocol.ProxyDataRequest;
@@ -71,7 +72,8 @@ public class ServerClient {
             return Optional.of(JSON.readValue(response.body(), EnrolmentResult.class));
 
         } catch (IOException e) {
-            log.warn("Could not reach the server at {}: {}", properties.getServerUrl(), e.getMessage());
+            log.warn("Could not reach the server at {}: {}",
+                    properties.getServerUrl(), Failures.describe(e));
             return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -103,7 +105,7 @@ public class ServerClient {
             return Optional.of(JSON.readValue(response.body(), ProxyConfigResponse.class));
 
         } catch (IOException e) {
-            log.warn("Could not fetch configuration: {}", e.getMessage());
+            log.warn("Could not fetch configuration: {}", Failures.describe(e));
             return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -155,7 +157,7 @@ public class ServerClient {
             return Optional.of(acknowledgement);
 
         } catch (IOException e) {
-            log.warn("Could not upload {} result(s): {}", results.size(), e.getMessage());
+            log.warn("Could not upload {} result(s): {}", results.size(), Failures.describe(e));
             return Optional.empty();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
