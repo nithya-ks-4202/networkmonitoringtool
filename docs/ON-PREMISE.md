@@ -16,7 +16,47 @@ Disk is the one to watch. A rough figure: **items × (86400 ÷ interval) × 90 d
 
 Cameras are cheap to monitor — seven items each at one minute. A thousand cameras is well within a 4-core box.
 
-## Install
+## Developing on a Mac, hosting on a Linux server
+
+Nothing is built on the Mac and copied over. The Linux server clones the
+repository and builds there, which is what keeps the two in step — and avoids
+the trap of building an image on an Apple Silicon Mac that will not run on an
+x86 server.
+
+So the Mac's only job is to push code:
+
+```bash
+# on the Mac
+git push
+```
+
+Everything below happens **on the Linux server**, over SSH.
+
+### 1. Install Docker
+
+Docker Engine, not Docker Desktop — Desktop is a Mac and Windows product. The
+official script handles every mainstream distribution:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo systemctl enable --now docker
+```
+
+Add yourself to the `docker` group so you are not typing `sudo` all day. Log out
+and back in afterwards, as group membership is only read at login:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+Check it took:
+
+```bash
+docker run --rm hello-world
+docker compose version     # must be v2; "docker-compose" with a hyphen is the old one
+```
+
+### 2. Install
 
 ```bash
 git clone <your-repo> /opt/nms && cd /opt/nms
@@ -26,13 +66,58 @@ openssl rand -base64 24   # → NMS_DB_PASSWORD
 openssl rand -base64 48   # → NMS_JWT_SECRET
 $EDITOR .env
 
-docker compose up -d
+docker compose up -d             # first run builds the images; allow a few minutes
 docker compose logs -f server    # the admin password is printed once
 ```
 
 Interface on `http://<host>:3000`.
 
-Set `NMS_BASE_URL` in `.env` to the address staff actually use — it's what notification links point at, and `localhost` in an email helps nobody.
+Set `NMS_BASE_URL` in `.env` to the address staff actually use — it is what
+notification links point at.
+
+### 3. Open the ports
+
+Most server distributions ship with a firewall that will silently swallow this.
+
+```bash
+# ufw (Ubuntu/Debian)
+sudo ufw allow 3000/tcp
+
+# firewalld (RHEL/Rocky/Alma)
+sudo firewall-cmd --permanent --add-port=3000/tcp && sudo firewall-cmd --reload
+```
+
+Port 8080 (the API) only needs opening if something outside the server calls it
+directly — a proxy at another site, or agents pushing in active mode. The web
+interface reaches it inside the Compose network.
+
+### 4. Deploying a change later
+
+```bash
+# on the Mac
+git push
+
+# on the server
+cd /opt/nms
+/usr/local/bin/nms-backup      # set up in "Back up the database" below
+git pull
+docker compose up -d --build
+```
+
+### If the server cannot reach Docker Hub
+
+Common on a corporate network. Retag the four upstream images into your own
+registry and point the build at them — no tracked file needs editing, so
+`git pull` stays clean:
+
+```properties
+# .env
+NMS_DB_IMAGE=registry.internal/timescale/timescaledb:latest-pg16
+NMS_MAVEN_IMAGE=registry.internal/maven:3.9-eclipse-temurin-21
+NMS_JRE_IMAGE=registry.internal/eclipse-temurin:21-jre-jammy
+NMS_NODE_IMAGE=registry.internal/node:22-alpine
+NMS_NGINX_IMAGE=registry.internal/nginx:1.27-alpine
+```
 
 ## Put TLS in front of it
 

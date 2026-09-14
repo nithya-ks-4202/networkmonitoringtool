@@ -217,14 +217,24 @@ dump restored into a fresh one with data intact.
 describer, and the trigger expression engine — parser, evaluator, and the
 propagation of "no data" through both.
 
-**Not verified:** the container images were never built, because there is no
-Docker daemon in this environment. Each Dockerfile's build stage was instead run
-directly against a replica of the exact context it copies — so the Maven and npm
-builds inside them are known to work, but the runtime stages, entrypoints and
-health checks have not executed. The Helm chart was not rendered by `helm
-template` either (the binary could not be downloaded); its templates are
-structurally checked only. SNMP and ONVIF have unit coverage and no integration
-test against real hardware.
+**The server and proxy images, built and run:** both Dockerfiles built, both
+containers started against PostgreSQL 16 and reported healthy. The server
+migrated a fresh database, answered the API, and polled a host linked to the
+ICMP template on schedule — `icmpping=1`, `icmppingloss=0`, `icmppingsec=0.0002`
+written to history. The proxy refused to start without a token, enrolled with
+one, and its heartbeat health check reported healthy.
+
+Building them is what found the two defects fixed in `3ab35c0` — in particular
+that the server's poller claimed nothing at all, which no test caught and
+reading the code did not reveal.
+
+**Not verified:** the web image's runtime stage. Its build stage runs (`npm ci`
+and `npm run build` produce `web/dist`), but nginx's template rendering and the
+`/api` proxy pass have not executed in a container. The Helm chart was not
+rendered by `helm template` either; its templates are structurally checked only.
+SNMP and ONVIF have unit coverage and no integration test against real hardware.
+There is no API for listing templates — they are linked by name when a host is
+created, and the interface offers no way to browse them.
 
 ## Licence
 
