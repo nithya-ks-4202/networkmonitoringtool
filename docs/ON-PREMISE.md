@@ -216,6 +216,20 @@ A monitoring system that cannot report on itself has one blind spot, and it is t
 
 ## Troubleshooting
 
+**`git pull` says `cannot open '.git/FETCH_HEAD': Permission denied`.**
+Something was run with `sudo` earlier in this directory, and it left files
+inside `.git/` owned by root. Git is not asking for privileges — it cannot
+write to its own metadata. Take the checkout back:
+
+```bash
+sudo chown -R "$(id -un):$(id -gn)" .
+git pull
+```
+
+Check for the same damage elsewhere while you are there — `ls -la` for anything
+owned by `root`, particularly `.env`, which the server needs to read and you
+need to edit.
+
 **Every ICMP check reports down, but the devices are up.**
 `ping` is missing or `NET_RAW` was not granted, so checks fell back to a TCP probe. Check the server log at startup for `No ping binary found`.
 
