@@ -38,7 +38,7 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker "$USER"    # log out of the WSL shell and back in
 
 git clone <your-repo> ~/nms && cd ~/nms
-cp .env.example .env && nano .env
+./deploy/init-env.sh
 docker compose up -d
 ```
 

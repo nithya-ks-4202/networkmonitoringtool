@@ -48,11 +48,7 @@ Docker Desktop, because macOS runs Linux containers in a VM and has no engine of
 its own — see [docs/ON-PREMISE.md](docs/ON-PREMISE.md#running-it-on-the-mac).
 
 ```bash
-cp .env.example .env
-# Set NMS_DB_PASSWORD and NMS_JWT_SECRET. Nothing has a working default.
-#   openssl rand -base64 24   # database password
-#   openssl rand -base64 48   # JWT secret
-
+./deploy/init-env.sh            # writes .env with generated secrets
 docker compose up -d
 docker compose logs -f server   # the generated admin password is printed once
 ```

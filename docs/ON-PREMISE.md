@@ -69,14 +69,19 @@ docker compose version     # must be v2; "docker-compose" with a hyphen is the o
 ```bash
 git clone <your-repo> /opt/nms && cd /opt/nms
 
-cp .env.example .env
-openssl rand -base64 24   # → NMS_DB_PASSWORD
-openssl rand -base64 48   # → NMS_JWT_SECRET
-$EDITOR .env
+./deploy/init-env.sh             # writes .env with generated secrets
 
 docker compose up -d             # first run builds the images; allow a few minutes
 docker compose logs -f server    # the admin password is printed once
 ```
+
+No `sudo` on any of that. The files belong to you, and running Compose as root
+leaves a `.env` and build cache that you then cannot edit.
+
+If `docker compose up` answers with a list of
+`required variable ... is missing a value` errors, `.env` was not created or
+not filled in — run the script above. If it names `NMS_PROXY_TOKEN`, the
+checkout predates the fix for that; `git pull` first.
 
 Interface on `http://<host>:3000`.
 
@@ -260,7 +265,7 @@ docker compose version
 Then the same commands as the server:
 
 ```bash
-cp .env.example .env && $EDITOR .env
+./deploy/init-env.sh
 docker compose up -d
 ```
 
