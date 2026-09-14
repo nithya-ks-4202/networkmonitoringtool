@@ -38,16 +38,26 @@ public interface ProblemRepository extends JpaRepository<Problem, Long> {
             """)
     List<Problem> findAllOpenByTriggerId(@Param("triggerId") Long triggerId);
 
+    /**
+     * Open problems at or above a severity, most severe first.
+     *
+     * <p>Compared and ordered on the numeric level, not the enum name: comparing
+     * names compares them as text, so a "High and above" filter would ask
+     * whether {@code 'HIGH' >= 'NOT_CLASSIFIED'} -- false -- while
+     * {@code 'WARNING' >= 'NOT_CLASSIFIED'} is true. The filter would return
+     * warnings and hide disasters, and the sort would put Warning above
+     * Disaster.
+     */
     @Query("""
             SELECT p FROM Problem p
             LEFT JOIN FETCH p.host
             WHERE p.tenantId = :tenantId
               AND p.resolvedAt IS NULL
-              AND p.severity >= :minSeverity
-            ORDER BY p.severity DESC, p.clock DESC
+              AND p.severityLevel >= :minSeverityLevel
+            ORDER BY p.severityLevel DESC, p.clock DESC
             """)
     List<Problem> findOpen(@Param("tenantId") Long tenantId,
-                           @Param("minSeverity") Severity minSeverity,
+                           @Param("minSeverityLevel") short minSeverityLevel,
                            Pageable pageable);
 
     @Query("""

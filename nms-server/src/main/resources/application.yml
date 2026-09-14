@@ -45,7 +45,11 @@ spring:
         size: 8
 
   jackson:
-    default-property-inclusion: non_null
+    # Nulls are serialised explicitly rather than omitted. An absent field and a
+    # null field are indistinguishable to a client, so "never collected" and
+    # "the key is missing" become the same thing -- and a check for null quietly
+    # passes on undefined. The few extra bytes are worth an unambiguous contract.
+    default-property-inclusion: always
     serialization:
       write-dates-as-timestamps: false
 

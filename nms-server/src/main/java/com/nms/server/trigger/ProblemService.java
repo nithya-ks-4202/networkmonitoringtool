@@ -262,10 +262,12 @@ public class ProblemService {
         return expired.size();
     }
 
-    /** Open problems for a tenant, most severe first. */
+    /** Open problems for a tenant at or above a severity, most severe first. */
     @Transactional(readOnly = true)
     public List<Problem> openProblems(Long tenantId, Severity minSeverity, int limit) {
-        return problems.findOpen(tenantId, minSeverity,
+        short minLevel = (short) (minSeverity == null
+                ? Severity.NOT_CLASSIFIED.level() : minSeverity.level());
+        return problems.findOpen(tenantId, minLevel,
                 org.springframework.data.domain.PageRequest.of(0, limit));
     }
 }

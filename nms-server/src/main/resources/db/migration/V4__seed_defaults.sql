@@ -314,12 +314,16 @@ WHERE h.host = 'template.snmp.device' AND h.tenant_id = 1;
 
 -- Low-level discovery of network interfaces. The rule item returns a JSON
 -- array of {#IFNAME}/{#IFINDEX} pairs; prototypes below become real items.
+-- lldMacros is a flat "macro=source" list rather than a nested object: item
+-- params are a string map, and the SNMP walker parses this form directly.
+-- "value" binds the column's value, "index" binds the row's OID suffix -- which
+-- is what later lets a prototype build ...1.3.6.1.2.1.2.2.1.10.{#IFINDEX} per port.
 INSERT INTO item (tenant_id, host_id, name, key_, check_type, value_type,
                   delay_seconds, flags, description, params)
 SELECT 1, h.host_id, 'Network interface discovery', 'net.if.discovery', 'SNMP', 'TEXT',
        3600, 'DISCOVERY_RULE',
        'Walks the IF-MIB interface table and creates traffic and status items per interface.',
-       '{"oid":"1.3.6.1.2.1.2.2.1.2","lldMacros":{"{#IFNAME}":"value","{#IFINDEX}":"index"},"walk":"true"}'::jsonb
+       '{"oid":"1.3.6.1.2.1.2.2.1.2","lldMacros":"{#IFNAME}=value,{#IFINDEX}=index","walk":"true"}'::jsonb
 FROM host h WHERE h.host = 'template.snmp.device' AND h.tenant_id = 1;
 
 INSERT INTO item (tenant_id, host_id, name, key_, check_type, value_type, units,
@@ -329,25 +333,57 @@ SELECT 1, h.host_id, v.name, v.key_, 'SNMP', v.value_type, v.units,
 FROM host h,
 (VALUES
  ('Interface {#IFNAME}: Bits received', 'net.if.in[{#IFNAME}]', 'UNSIGNED', 'bps', 60,
-  'ifHCInOctets converted to bits per second by the change-per-second preprocessing step.',
-  '{"oid":"1.3.6.1.2.1.31.1.1.1.6.{#IFINDEX}","preprocess":"CHANGE_PER_SECOND,MULTIPLIER:8"}'),
+  'ifHCInOctets, converted to bits per second by this item''s preprocessing steps.',
+  '{"oid":"1.3.6.1.2.1.31.1.1.1.6.{#IFINDEX}"}'),
  ('Interface {#IFNAME}: Bits sent', 'net.if.out[{#IFNAME}]', 'UNSIGNED', 'bps', 60,
-  'ifHCOutOctets converted to bits per second.',
-  '{"oid":"1.3.6.1.2.1.31.1.1.1.10.{#IFINDEX}","preprocess":"CHANGE_PER_SECOND,MULTIPLIER:8"}'),
+  'ifHCOutOctets, converted to bits per second.',
+  '{"oid":"1.3.6.1.2.1.31.1.1.1.10.{#IFINDEX}"}'),
  ('Interface {#IFNAME}: Inbound errors', 'net.if.in.errors[{#IFNAME}]', 'UNSIGNED', '', 60,
   'ifInErrors as a rate.',
-  '{"oid":"1.3.6.1.2.1.2.2.1.14.{#IFINDEX}","preprocess":"CHANGE_PER_SECOND"}'),
+  '{"oid":"1.3.6.1.2.1.2.2.1.14.{#IFINDEX}"}'),
  ('Interface {#IFNAME}: Outbound errors', 'net.if.out.errors[{#IFNAME}]', 'UNSIGNED', '', 60,
   'ifOutErrors as a rate.',
-  '{"oid":"1.3.6.1.2.1.2.2.1.20.{#IFINDEX}","preprocess":"CHANGE_PER_SECOND"}'),
+  '{"oid":"1.3.6.1.2.1.2.2.1.20.{#IFINDEX}"}'),
  ('Interface {#IFNAME}: Operational status', 'net.if.status[{#IFNAME}]', 'UNSIGNED', '', 60,
   'ifOperStatus: 1 up, 2 down, 3 testing.',
   '{"oid":"1.3.6.1.2.1.2.2.1.8.{#IFINDEX}"}'),
  ('Interface {#IFNAME}: Speed', 'net.if.speed[{#IFNAME}]', 'UNSIGNED', 'bps', 3600,
   'ifHighSpeed in megabits, scaled to bits per second.',
-  '{"oid":"1.3.6.1.2.1.31.1.1.1.15.{#IFINDEX}","preprocess":"MULTIPLIER:1000000"}')
+  '{"oid":"1.3.6.1.2.1.31.1.1.1.15.{#IFINDEX}"}')
 ) AS v(name, key_, value_type, units, delay, descr, params)
 WHERE h.host = 'template.snmp.device' AND h.tenant_id = 1;
+
+-- Preprocessing belongs in item_preprocessing, not in an item parameter: the
+-- pipeline reads this table, so a step declared anywhere else would never run
+-- and these items would store raw cumulative octet counters under a label that
+-- says "bps".
+--
+-- Two steps on the traffic items, in order: the counter becomes a per-second
+-- rate, then bytes become bits. CHANGE_PER_SECOND also absorbs the counter
+-- wrapping that would otherwise produce one enormous spike per rollover.
+INSERT INTO item_preprocessing (item_id, step, type, params, error_handler)
+SELECT i.item_id, 1, 'CHANGE_PER_SECOND', '[]'::jsonb,
+       -- The first sample has no predecessor to subtract, and that is normal
+       -- rather than an error worth showing an operator.
+       'DISCARD_VALUE'
+FROM item i JOIN host h ON h.host_id = i.host_id
+WHERE h.host = 'template.snmp.device'
+  AND i.key_ IN ('net.if.in[{#IFNAME}]', 'net.if.out[{#IFNAME}]',
+                 'net.if.in.errors[{#IFNAME}]', 'net.if.out.errors[{#IFNAME}]');
+
+INSERT INTO item_preprocessing (item_id, step, type, params, error_handler)
+SELECT i.item_id, 2, 'MULTIPLIER', '["8"]'::jsonb, 'ERROR'
+FROM item i JOIN host h ON h.host_id = i.host_id
+WHERE h.host = 'template.snmp.device'
+  AND i.key_ IN ('net.if.in[{#IFNAME}]', 'net.if.out[{#IFNAME}]');
+
+INSERT INTO item_preprocessing (item_id, step, type, params, error_handler)
+SELECT i.item_id, 1, 'MULTIPLIER', '["1000000"]'::jsonb, 'ERROR'
+FROM item i JOIN host h ON h.host_id = i.host_id
+WHERE h.host = 'template.snmp.device' AND i.key_ = 'net.if.speed[{#IFNAME}]';
+
+-- sysUpTime is reported in seconds by the SNMP poller, so no scaling step is
+-- needed here; the uptime trigger reads seconds directly.
 
 INSERT INTO trigger_def (tenant_id, host_id, description, expression, severity, comments)
 SELECT 1, h.host_id, v.descr, v.expr, v.sev, v.comment

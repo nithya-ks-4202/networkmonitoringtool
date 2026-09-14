@@ -59,6 +59,16 @@ public class Event {
     @Column(name = "severity", nullable = false)
     private Severity severity = Severity.NOT_CLASSIFIED;
 
+    /**
+     * Numeric form of {@link #severity}, for filtering and sorting.
+     *
+     * <p>Comparing enum names compares them as text, which orders Warning above
+     * Disaster. Computed by the database from {@code severity}, so it cannot
+     * drift however the row was written.
+     */
+    @Column(name = "severity_level", insertable = false, updatable = false)
+    private short severityLevel;
+
     @Column(name = "name", nullable = false)
     private String name = "";
 

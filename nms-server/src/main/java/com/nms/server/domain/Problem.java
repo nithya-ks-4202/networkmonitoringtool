@@ -75,6 +75,22 @@ public class Problem {
     private Severity severity = Severity.NOT_CLASSIFIED;
 
     /**
+     * Numeric form of {@link #severity}, for filtering and sorting.
+     *
+     * <p>Comparing enum names compares them as text, so "High and above" would
+     * ask whether {@code 'HIGH' >= 'NOT_CLASSIFIED'} -- false -- while
+     * {@code 'WARNING' >= 'NOT_CLASSIFIED'} is true, returning warnings and
+     * hiding disasters.
+     *
+     * <p>Computed by the database from {@code severity}, so it cannot drift
+     * from the column it is derived from however the row was written. Never
+     * written from here, which is what {@code insertable/updatable = false}
+     * says to Hibernate.
+     */
+    @Column(name = "severity_level", insertable = false, updatable = false)
+    private short severityLevel;
+
+    /**
      * Severity as the trigger defined it, preserved when an operator changes
      * the working severity during triage, so reporting is not rewritten by
      * human action after the fact.
