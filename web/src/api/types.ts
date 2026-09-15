@@ -87,7 +87,14 @@ export interface LatestValue {
 }
 
 /** What the camera wall shows for one device. */
-export type CameraState = 'ONLINE' | 'OFFLINE' | 'UNKNOWN'
+/**
+ * What the wall shows for one camera.
+ *
+ * IMPAIRED is reachable-but-faulty: a dead SD card or a hung encoder still
+ * answers ping, so it must not read as ONLINE -- and it is not OFFLINE either,
+ * because the camera is there and streaming.
+ */
+export type CameraState = 'ONLINE' | 'IMPAIRED' | 'OFFLINE' | 'UNKNOWN'
 
 export interface CameraStatus {
   hostId: number
@@ -98,6 +105,10 @@ export interface CameraStatus {
   lastSeen: string | null | undefined
   age: string
   error: string
+  /** The most urgent open problem, or null when there is none. */
+  problem: string | null
+  problemSeverity: Severity | null
+  problemCount: number
 }
 
 /**

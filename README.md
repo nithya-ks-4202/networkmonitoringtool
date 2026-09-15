@@ -229,6 +229,31 @@ unsupported with the reason, and the rest of the template is unaffected.
 Its triggers depend on the offline trigger, so a camera that loses power raises
 one problem rather than seven.
 
+### On the camera wall
+
+The wall shows four states, each with its own shape as well as its own colour —
+on a grid read from across a room, hue is the first thing to go.
+
+| | State | Meaning |
+|---|---|---|
+| ● | **Online** | Reachable and nothing wrong |
+| ▲ | **Faulty** | Reachable, and not doing its job — the tile names the fault |
+| ◆ | **Offline** | Not answering at all |
+| ■ | **No data** | Collection itself failed; we cannot tell |
+
+**Faulty** is the state that matters here. A camera with a dead SD card or a
+hung encoder answers ping perfectly, so a wall judged on reachability alone
+shows it green — the exact reassuring-but-wrong picture the storage and stream
+checks exist to prevent. Such a tile turns amber and reads *"Camera is not
+recording (storage failed)"*, because "faulty" on its own sends nobody
+anywhere useful.
+
+Only problems at `AVERAGE` or above change a tile. The template's
+informational latency trigger and its ONVIF and web-interface warnings stay on
+the Problems page: a wall that turns amber because a camera is fifty
+milliseconds slow is a wall people learn to ignore, and the tile that means
+"this camera is recording nothing" would be ignored with it.
+
 Per-camera overrides go in macros:
 
 | Macro | Purpose |
