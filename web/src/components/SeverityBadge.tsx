@@ -67,6 +67,11 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
  */
 const CAMERA_STYLE: Record<CameraState, { label: string; color: string; glyph: string }> = {
   ONLINE: { label: 'Online', color: 'var(--status-good)', glyph: 'circle' },
+  // A fourth shape, not just a fourth colour. On a wall of three hundred
+  // tiles read from across a room, hue alone is the first thing to go -- and
+  // the whole point of this state is that it must not be mistaken for the
+  // green one beside it.
+  IMPAIRED: { label: 'Faulty', color: 'var(--status-warning)', glyph: 'triangle' },
   OFFLINE: { label: 'Offline', color: 'var(--status-critical)', glyph: 'diamond' },
   UNKNOWN: { label: 'No data', color: 'var(--status-none)', glyph: 'square' },
 }
@@ -79,6 +84,16 @@ export function CameraStateMark({ state }: { state: CameraState }) {
       <span className="severity-text">{style.label}</span>
     </span>
   )
+}
+
+/**
+ * The word shown for a state, wherever it appears.
+ *
+ * <p>Exported so a filter button and a tile cannot drift into calling the
+ * same state two different things.
+ */
+export function cameraStateLabel(state: CameraState): string {
+  return CAMERA_STYLE[state].label
 }
 
 export function cameraStateClass(state: CameraState): string {

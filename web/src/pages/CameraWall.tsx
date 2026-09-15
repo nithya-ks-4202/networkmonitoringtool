@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { CameraState, CameraStatus } from '../api/types'
-import { CameraStateMark, cameraStateClass } from '../components/SeverityBadge'
+import { CameraStateMark, cameraStateClass, cameraStateLabel } from '../components/SeverityBadge'
 
 /**
  * Online/offline state for every camera, as a wall display.
@@ -44,20 +44,21 @@ export function CameraWall() {
           slices would be harder to read than the numbers themselves. */}
       <div className="grid grid-tiles" style={{ marginBottom: 16 }}>
         <StateTile state="ONLINE" count={counts.ONLINE} />
+        <StateTile state="IMPAIRED" count={counts.IMPAIRED} />
         <StateTile state="OFFLINE" count={counts.OFFLINE} />
         <StateTile state="UNKNOWN" count={counts.UNKNOWN} />
       </div>
 
       <div className="filter-row">
         <div className="segmented" role="group" aria-label="Filter by state">
-          {(['ALL', 'OFFLINE', 'UNKNOWN', 'ONLINE'] as const).map((state) => (
+          {(['ALL', 'OFFLINE', 'IMPAIRED', 'UNKNOWN', 'ONLINE'] as const).map((state) => (
             <button
               key={state}
               type="button"
               aria-pressed={showOnly === state}
               onClick={() => setShowOnly(state)}
             >
-              {state === 'ALL' ? 'All' : state.charAt(0) + state.slice(1).toLowerCase()}
+              {state === 'ALL' ? 'All' : cameraStateLabel(state)}
             </button>
           ))}
         </div>
@@ -88,11 +89,19 @@ export function CameraWall() {
             </div>
             <CameraStateMark state={camera.status} />
             <div className="camera-meta">
-              {camera.status === 'UNKNOWN' && camera.error
-                ? camera.error
-                : camera.lastSeen != null
-                  ? `checked ${camera.age} ago`
-                  : 'never checked'}
+              {/* The fault itself, not just that there is one: "Faulty" sends
+                  nobody anywhere useful, whereas "not recording (storage
+                  failed)" is the difference between dispatching an engineer
+                  with a replacement card and dispatching one to look at a
+                  camera that is streaming perfectly. */}
+              {camera.status === 'IMPAIRED' && camera.problem
+                ? camera.problem +
+                  (camera.problemCount > 1 ? ` (+${camera.problemCount - 1} more)` : '')
+                : camera.status === 'UNKNOWN' && camera.error
+                  ? camera.error
+                  : camera.lastSeen != null
+                    ? `checked ${camera.age} ago`
+                    : 'never checked'}
             </div>
           </Link>
         ))}
@@ -113,16 +122,23 @@ function StateTile({ state, count }: { state: CameraState; count: number }) {
 }
 
 function summarise(cameras: CameraStatus[]): Record<CameraState, number> {
-  const counts: Record<CameraState, number> = { ONLINE: 0, OFFLINE: 0, UNKNOWN: 0 }
+  const counts: Record<CameraState, number> = { ONLINE: 0, IMPAIRED: 0, OFFLINE: 0, UNKNOWN: 0 }
   for (const camera of cameras) {
     counts[camera.status] += 1
   }
   return counts
 }
 
-/** Offline first, then unknown, then online; alphabetical within each. */
+/**
+ * Offline first, then faulty, then unknown, then online; alphabetical within
+ * each.
+ *
+ * Faulty outranks unknown because it is a confirmed fault rather than an
+ * absence of information -- a camera that is definitely not recording needs
+ * attention before one we merely cannot read.
+ */
 function byUrgencyThenName(a: CameraStatus, b: CameraStatus): number {
-  const rank: Record<CameraState, number> = { OFFLINE: 0, UNKNOWN: 1, ONLINE: 2 }
+  const rank: Record<CameraState, number> = { OFFLINE: 0, IMPAIRED: 1, UNKNOWN: 2, ONLINE: 3 }
   const byState = rank[a.status] - rank[b.status]
   return byState !== 0 ? byState : a.hostName.localeCompare(b.hostName)
 }

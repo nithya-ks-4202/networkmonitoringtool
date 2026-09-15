@@ -229,6 +229,31 @@ unsupported with the reason, and the rest of the template is unaffected.
 Its triggers depend on the offline trigger, so a camera that loses power raises
 one problem rather than seven.
 
+### On the camera wall
+
+The wall shows four states, each with its own shape as well as its own colour —
+on a grid read from across a room, hue is the first thing to go.
+
+| | State | Meaning |
+|---|---|---|
+| ● | **Online** | Reachable and nothing wrong |
+| ▲ | **Faulty** | Reachable, and not doing its job — the tile names the fault |
+| ◆ | **Offline** | Not answering at all |
+| ■ | **No data** | Collection itself failed; we cannot tell |
+
+**Faulty** is the state that matters here. A camera with a dead SD card or a
+hung encoder answers ping perfectly, so a wall judged on reachability alone
+shows it green — the exact reassuring-but-wrong picture the storage and stream
+checks exist to prevent. Such a tile turns amber and reads *"Camera is not
+recording (storage failed)"*, because "faulty" on its own sends nobody
+anywhere useful.
+
+Only problems at `AVERAGE` or above change a tile. The template's
+informational latency trigger and its ONVIF and web-interface warnings stay on
+the Problems page: a wall that turns amber because a camera is fifty
+milliseconds slow is a wall people learn to ignore, and the tile that means
+"this camera is recording nothing" would be ignored with it.
+
 Per-camera overrides go in macros:
 
 | Macro | Purpose |
@@ -309,13 +334,17 @@ Building them is what found the two defects fixed in `3ab35c0` — in particular
 that the server's poller claimed nothing at all, which no test caught and
 reading the code did not reveal.
 
-**Not verified:** the web image's runtime stage. Its build stage runs (`npm ci`
-and `npm run build` produce `web/dist`), but nginx's template rendering and the
-`/api` proxy pass have not executed in a container. The Helm chart was not
-rendered by `helm template` either; its templates are structurally checked only.
-SNMP and ONVIF have unit coverage and no integration test against real hardware.
-There is no API for listing templates — they are linked by name when a host is
-created, and the interface offers no way to browse them.
+**All three images, running together:** the full Compose stack has been brought
+up on a separate machine and signed into — which is what finally exercised the
+web image's runtime stage, nginx's template rendering and its `/api` proxy pass.
+That was the last part of the build I had no way to reach from a container-only
+environment.
+
+**Not verified:** the Helm chart was never rendered by `helm template`; its
+templates are structurally checked only. SNMP and ONVIF have unit coverage and
+no integration test against real hardware, and the Hikvision storage parsing is
+tested against captured ISAPI payloads rather than a camera. Media types and
+actions have no interface — alerting is configured through the API or SQL.
 
 ## Licence
 

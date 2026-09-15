@@ -244,6 +244,19 @@ body {
 .status-glyph.square { border-radius: 1px; }
 .status-glyph.diamond { border-radius: 1px; transform: rotate(45deg); }
 
+/*
+ * The conventional warning shape, for the reachable-but-faulty state.
+ *
+ * It forgoes the surface ring the others carry: clip-path clips the box-shadow
+ * along with the box. Acceptable here because this glyph is never rendered
+ * without its text label beside it, so it is not the only thing separating it
+ * from a neighbour.
+ */
+.status-glyph.triangle {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  box-shadow: none;
+}
+
 .severity-badge {
   display: inline-flex;
   align-items: center;
@@ -338,9 +351,10 @@ body {
   background: var(--surface-raised);
 }
 
-.camera-tile.online  { border-left-color: var(--status-good); }
-.camera-tile.offline { border-left-color: var(--status-critical); }
-.camera-tile.unknown { border-left-color: var(--status-none); }
+.camera-tile.online   { border-left-color: var(--status-good); }
+.camera-tile.impaired { border-left-color: var(--status-warning); }
+.camera-tile.offline  { border-left-color: var(--status-critical); }
+.camera-tile.unknown  { border-left-color: var(--status-none); }
 
 .camera-name {
   font-weight: 570;
