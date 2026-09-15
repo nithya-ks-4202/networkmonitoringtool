@@ -68,14 +68,7 @@ export function CameraWall() {
 
       {isLoading && <div className="empty">Loading cameras…</div>}
 
-      {data?.length === 0 && (
-        <div className="card">
-          <div className="empty">
-            No cameras are configured yet. Add a host with class <strong>Camera</strong> and link the
-            <strong> Template: IP camera</strong> template to it.
-          </div>
-        </div>
-      )}
+      {data?.length === 0 && <EmptyWall />}
 
       <div className="camera-grid">
         {visible.map((camera) => (
@@ -107,6 +100,70 @@ export function CameraWall() {
         ))}
       </div>
     </>
+  )
+}
+
+/**
+ * Why the wall is empty.
+ *
+ * Two quite different situations produce an identical empty wall, because the
+ * query behind it is driven by the reachability item rather than by the host:
+ * there are no cameras at all, or there are cameras that nothing is checking.
+ * Telling an operator to "add a host with class Camera" when they have just
+ * added one -- and the real omission is a template that was never linked --
+ * sends them to do the one thing that cannot help.
+ */
+function EmptyWall() {
+  // Only mounted when the wall came back empty, so the normal case pays
+  // nothing for this. The key matches the Hosts page's, so adding a host
+  // invalidates both.
+  const { data: cameraHosts, isLoading } = useQuery({
+    queryKey: ['hosts', 'CAMERA'],
+    queryFn: () => api.hosts('CAMERA'),
+    staleTime: 30_000,
+  })
+
+  if (isLoading || !cameraHosts) {
+    return null
+  }
+
+  if (cameraHosts.length === 0) {
+    return (
+      <div className="card">
+        <div className="empty">
+          No cameras are configured yet. Add a host with class <strong>Camera</strong> on the{' '}
+          <Link to="/hosts">Hosts</Link> page, or find them with a{' '}
+          <Link to="/discovery">discovery</Link> sweep.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card">
+      <div className="empty" style={{ textAlign: 'left' }}>
+        <div>
+          {cameraHosts.length === 1
+            ? 'One camera host is configured, but nothing is checking whether it is up. Open it below'
+            : `${cameraHosts.length} camera hosts are configured, but nothing is checking whether they are up. Open each below`}{' '}
+          and link <strong>Template: IP camera</strong> in its Templates panel; the wall fills in on
+          the next poll.
+        </div>
+        <ul style={{ margin: '10px 0 0', paddingLeft: 18 }}>
+          {cameraHosts.slice(0, 10).map((host) => (
+            <li key={host.id} style={{ marginBottom: 3 }}>
+              <Link to={`/hosts/${host.id}`}>{host.name}</Link>{' '}
+              <span className="muted">{host.address}</span>
+            </li>
+          ))}
+        </ul>
+        {cameraHosts.length > 10 && (
+          <div className="muted" style={{ marginTop: 6 }}>
+            and {cameraHosts.length - 10} more.
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

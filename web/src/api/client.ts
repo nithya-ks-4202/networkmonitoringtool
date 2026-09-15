@@ -5,6 +5,7 @@ import type {
   DiscoveryRuleRequest,
   GraphSeries,
   HostCreateRequest,
+  HostDetail,
   HostSummary,
   LatestValue,
   Problem,
@@ -190,6 +191,23 @@ export const api = {
 
   createHost(body: HostCreateRequest): Promise<HostSummary> {
     return request('/api/hosts', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  host(hostId: number): Promise<HostDetail> {
+    return request(`/api/hosts/${hostId}`)
+  },
+
+  /**
+   * Replaces the host's linked templates.
+   *
+   * The complete set, not an addition: a name left out is unlinked, and
+   * unlinking deletes the items it created along with their history.
+   */
+  setHostTemplates(hostId: number, templates: string[]): Promise<HostDetail> {
+    return request(`/api/hosts/${hostId}/templates`, {
+      method: 'PUT',
+      body: JSON.stringify({ templates }),
+    })
   },
 
   discoveryRules(): Promise<DiscoveryRule[]> {

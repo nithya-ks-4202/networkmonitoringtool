@@ -72,6 +72,30 @@ export interface HostSummary {
   updatedAt: string
 }
 
+/** A host with everything the detail view shows. */
+export interface HostDetail {
+  summary: HostSummary
+  description: string
+  interfaces: {
+    id: number
+    type: string
+    main: boolean
+    useIp: boolean
+    ip: string
+    dns: string
+    port: number
+    available: Availability
+    error: string
+  }[]
+  macros: Record<string, string>
+  inventory: Record<string, string>
+  /** Template display names, the same strings the templates endpoint returns. */
+  templates: string[]
+  proxyId: number | null
+  itemCount: number
+  triggerCount: number
+}
+
 export interface LatestValue {
   itemId: number
   name: string

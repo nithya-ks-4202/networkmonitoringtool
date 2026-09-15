@@ -3,6 +3,7 @@ package com.nms.server.api;
 import com.nms.server.api.dto.HostDtos.HostDetail;
 import com.nms.server.api.dto.HostDtos.HostRequest;
 import com.nms.server.api.dto.HostDtos.HostSummary;
+import com.nms.server.api.dto.HostDtos.TemplateLinkRequest;
 import com.nms.server.domain.HostClass;
 import com.nms.server.security.AuthenticatedUser;
 import com.nms.server.service.HostService;
@@ -65,6 +66,24 @@ public class HostController {
     @Operation(summary = "Replace a host's configuration")
     public HostSummary update(@PathVariable Long hostId, @Valid @RequestBody HostRequest request) {
         return hostService.update(AuthenticatedUser.currentTenantId(), hostId, request);
+    }
+
+    /**
+     * Linking and unlinking templates, without touching anything else.
+     *
+     * <p>A separate endpoint rather than the full-replace PUT above, which
+     * clears any field the request leaves out: adding a template through that
+     * one means resending the host's description, groups, tags and proxy
+     * correctly as well, and getting any of them wrong is a silent change to
+     * something the operator did not touch.
+     */
+    @PutMapping("/{hostId}/templates")
+    @PreAuthorize("hasAuthority('host.write')")
+    @Operation(summary = "Replace the set of templates linked to a host")
+    public HostDetail setTemplates(@PathVariable Long hostId,
+                                   @Valid @RequestBody TemplateLinkRequest request) {
+        return hostService.setTemplates(
+                AuthenticatedUser.currentTenantId(), hostId, request.templates());
     }
 
     @DeleteMapping("/{hostId}")

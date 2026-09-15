@@ -198,18 +198,35 @@ checks, say — changes the **template**. Hosts already linked to it keep the se
 they were given when they were linked, so they carry on monitoring exactly what
 they did before.
 
-Re-saving a host re-applies its templates and adds whatever is missing:
+Re-applying a host's templates adds whatever is missing. In the interface:
+open the host and press **Apply** in its **Templates** panel. Through the API,
+send the host its own template list back:
 
 ```bash
-# For one host, through the API: read it back and send it again unchanged.
-curl -s -X PUT http://localhost:8080/api/hosts/<id> \
+# Read the names it is already linked to...
+curl -s http://localhost:8080/api/hosts/<id> \
+  -H "Authorization: Bearer $TOKEN" | jq '.templates'
+
+# ...and send exactly those back.
+curl -s -X PUT http://localhost:8080/api/hosts/<id>/templates \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '<the host's current definition>'
+  -d '{"templates":["Template: IP camera"]}'
 ```
 
 This is safe to repeat. Items and triggers the host already has are left
 exactly as they are, including any threshold that has been tuned by hand — only
 the missing ones are added. Nothing is deleted and no history is lost.
+
+Send the list, not a whole host definition. `PUT /api/hosts/<id>` replaces the
+host outright, so anything left out of that request is cleared — its
+description, its groups, its tags. Credentials are the exception: an interface's
+community string or v3 passphrase is never returned by the API, so omitting one
+leaves the stored value alone rather than erasing a secret the client was never
+given. Clear one deliberately by sending an empty string.
+
+A name **left out** of the template list is unlinked, and unlinking deletes the
+items that template created together with their history. Only the names you
+want kept should be in the list.
 
 Check what a host gained:
 

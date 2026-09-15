@@ -94,6 +94,15 @@ public final class HostDtos {
             Map<String, String> macros,
             Map<String, String> inventory,
             List<String> templates,
+            /**
+             * The proxy's identifier as well as the name the summary carries.
+             * Without it a client cannot send back what it was given: the
+             * full-replace endpoint takes an id, and an absent one unassigns
+             * the proxy -- so editing a remote site's host through the API
+             * moved it back to being polled from the centre, across a link
+             * the proxy exists to avoid using.
+             */
+            Long proxyId,
             int itemCount,
             int triggerCount) {
     }
@@ -165,5 +174,14 @@ public final class HostDtos {
 
     /** A tag being set on a host. */
     public record TagRequest(@NotBlank String tag, String value) {
+    }
+
+    /**
+     * The templates a host should be linked to.
+     *
+     * <p>The complete set, not an addition: a name absent from the list is
+     * unlinked, which removes the items it created along with their history.
+     */
+    public record TemplateLinkRequest(@NotNull List<String> templates) {
     }
 }

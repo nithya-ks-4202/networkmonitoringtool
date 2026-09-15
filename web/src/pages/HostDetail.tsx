@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
-import type { LatestValue } from '../api/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, ApiError } from '../api/client'
+import type { LatestValue, TemplateSummary } from '../api/types'
 import { MetricChart, formatValue } from '../components/MetricChart'
 
 const RANGES = [
@@ -127,7 +127,7 @@ export function HostDetail() {
             {latest.data?.length === 0 && (
               <tr>
                 <td colSpan={4} className="empty">
-                  This host has no items. Link a template to it.
+                  This host has no items. Link a template to it below.
                 </td>
               </tr>
             )}
@@ -163,7 +163,154 @@ export function HostDetail() {
           </tbody>
         </table>
       </div>
+
+      <TemplatePanel hostId={id} />
     </>
+  )
+}
+
+/**
+ * What is monitored on this host.
+ *
+ * <p>A host with no template collects nothing, which is the most common
+ * reason a device sits on the Hosts page while the camera wall and the
+ * dashboard both show nothing at all. Two screens used to advise linking a
+ * template with no way to do it anywhere in the interface.
+ */
+function TemplatePanel({ hostId }: { hostId: number }) {
+  const queryClient = useQueryClient()
+
+  const detail = useQuery({
+    queryKey: ['host', hostId],
+    queryFn: () => api.host(hostId),
+    enabled: Number.isFinite(hostId),
+  })
+  const { data: templates } = useQuery({
+    queryKey: ['templates'],
+    queryFn: () => api.templates(),
+    staleTime: 10 * 60_000,
+  })
+
+  const [selected, setSelected] = useState<string[] | null>(null)
+
+  // Seeded from the server once it answers, then left alone: re-seeding on
+  // every refetch would discard a selection the operator is part-way through
+  // making.
+  useEffect(() => {
+    if (detail.data && selected === null) {
+      setSelected(detail.data.templates)
+    }
+  }, [detail.data, selected])
+
+  const save = useMutation({
+    mutationFn: () => api.setHostTemplates(hostId, selected ?? []),
+    onSuccess: (updated) => {
+      setSelected(updated.templates)
+      queryClient.setQueryData(['host', hostId], updated)
+      // The items, the wall and the host lists all change shape when a
+      // template is linked, and none of them is derived from this response.
+      queryClient.invalidateQueries({ queryKey: ['latest', hostId] })
+      queryClient.invalidateQueries({ queryKey: ['hosts'] })
+      queryClient.invalidateQueries({ queryKey: ['cameras'] })
+    },
+  })
+
+  if (!detail.data || selected === null) {
+    return null
+  }
+
+  const linked = detail.data.templates
+  const removing = linked.filter((name) => !selected.includes(name))
+  const adding = selected.filter((name) => !linked.includes(name))
+  const changed = removing.length > 0 || adding.length > 0
+
+  const toggle = (name: string) =>
+    setSelected(
+      selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name],
+    )
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h2 className="card-title">Templates</h2>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+        {detail.data.itemCount} item{detail.data.itemCount === 1 ? '' : 's'} and{' '}
+        {detail.data.triggerCount} trigger{detail.data.triggerCount === 1 ? '' : 's'} on this host.
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {(templates ?? []).map((template: TemplateSummary) => (
+          <label
+            key={template.id}
+            style={{ display: 'flex', gap: 9, alignItems: 'flex-start', cursor: 'pointer' }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(template.name)}
+              onChange={() => toggle(template.name)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              {template.name}
+              <span className="muted" style={{ marginLeft: 7, fontSize: 12 }}>
+                {template.itemCount} items, {template.triggerCount} triggers
+              </span>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {template.description}
+              </div>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {/* Said before the button is pressed, not after. Unlinking deletes the
+          collected history along with the items, and there is no undo for
+          that anywhere in the system. */}
+      {removing.length > 0 && (
+        <div className="error-banner" style={{ marginTop: 12 }}>
+          Unlinking {removing.join(', ')} deletes the items it created on this host, together with
+          their collected history. This cannot be undone.
+        </div>
+      )}
+
+      {save.error && (
+        <div className="error-banner" style={{ marginTop: 12 }}>
+          {save.error instanceof ApiError ? save.error.message : (save.error as Error).message}
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 9, marginTop: 12 }}>
+        <button
+          type="button"
+          className="button"
+          disabled={!changed || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Applying…' : 'Apply'}
+        </button>
+        {changed && (
+          <button
+            type="button"
+            className="button ghost"
+            disabled={save.isPending}
+            onClick={() => setSelected(linked)}
+          >
+            Reset
+          </button>
+        )}
+        <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+          {changed
+            ? [
+                adding.length > 0 ? `linking ${adding.join(', ')}` : null,
+                removing.length > 0 ? `unlinking ${removing.join(', ')}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : linked.length === 0
+              ? 'Nothing is linked, so nothing is being collected.'
+              : `Linked: ${linked.join(', ')}`}
+        </span>
+      </div>
+    </div>
   )
 }
 

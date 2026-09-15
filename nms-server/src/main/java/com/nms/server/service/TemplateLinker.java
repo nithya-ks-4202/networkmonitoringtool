@@ -10,12 +10,14 @@ import com.nms.server.domain.TriggerTag;
 import com.nms.server.repository.HostRepository;
 import com.nms.server.repository.ItemRepository;
 import com.nms.server.repository.TriggerRepository;
+import com.nms.server.trigger.ProblemService;
 import com.nms.server.trigger.expression.ExpressionParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,11 +47,16 @@ public class TemplateLinker {
     private final HostRepository hosts;
     private final ItemRepository items;
     private final TriggerRepository triggers;
+    private final ProblemService problems;
 
-    public TemplateLinker(HostRepository hosts, ItemRepository items, TriggerRepository triggers) {
+    public TemplateLinker(HostRepository hosts,
+                          ItemRepository items,
+                          TriggerRepository triggers,
+                          ProblemService problems) {
         this.hosts = hosts;
         this.items = items;
         this.triggers = triggers;
+        this.problems = problems;
     }
 
     /** Links the named templates, adding to whatever is already linked. */
@@ -105,9 +112,12 @@ public class TemplateLinker {
     }
 
     private void unlink(Host host, Host template) {
-        List<Item> templateItems = items.findByHostId(template.getId());
         Set<Long> templateItemIds = new HashSet<>();
-        templateItems.forEach(item -> templateItemIds.add(item.getId()));
+        items.findByHostId(template.getId()).forEach(item -> templateItemIds.add(item.getId()));
+
+        Set<Long> templateTriggerIds = new HashSet<>();
+        triggers.findByHostId(template.getId())
+                .forEach(trigger -> templateTriggerIds.add(trigger.getId()));
 
         List<Item> derived = items.findByHostId(host.getId()).stream()
                 .filter(item -> item.getTemplateItem() != null
@@ -116,9 +126,29 @@ public class TemplateLinker {
 
         // Triggers first: they reference the items, and removing the items
         // beneath a live trigger would leave it permanently unevaluatable.
+        //
+        // Matched against this template's triggers, not merely against having
+        // come from some template. The looser test deleted every
+        // template-derived trigger on the host, so removing one template from
+        // a camera that also carried the storage template took the storage
+        // triggers with it -- leaving the items still collecting, and nothing
+        // left to alert on them.
         List<TriggerDef> derivedTriggers = triggers.findByHostId(host.getId()).stream()
-                .filter(trigger -> trigger.getTemplateTrigger() != null)
+                .filter(trigger -> trigger.getTemplateTrigger() != null
+                        && templateTriggerIds.contains(trigger.getTemplateTrigger().getId()))
                 .toList();
+        // A problem outlives the trigger that raised it: nothing joins the two
+        // tables, so deleting the trigger leaves its open problems open for
+        // good. They sit on the Problems page and in the severity counts with
+        // nothing left that could ever recover them, and any escalation
+        // already running against them keeps firing. Closing them here is the
+        // only moment the trigger is still available to write a recovery
+        // event against.
+        Instant now = Instant.now();
+        for (TriggerDef trigger : derivedTriggers) {
+            problems.resolveProblems(trigger, now);
+        }
+
         triggers.deleteAll(derivedTriggers);
         items.deleteAll(derived);
 

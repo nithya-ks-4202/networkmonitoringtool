@@ -13,6 +13,7 @@ import com.nms.server.domain.HostGroup;
 import com.nms.server.domain.HostInterface;
 import com.nms.server.domain.HostMacro;
 import com.nms.server.domain.HostTag;
+import com.nms.server.domain.InterfaceType;
 import com.nms.server.domain.Proxy;
 import com.nms.server.repository.CoreRepositories.HostGroupRepository;
 import com.nms.server.repository.CoreRepositories.ProxyRepository;
@@ -122,6 +123,7 @@ public class HostService {
                 macros,
                 host.getInventory(),
                 host.getTemplates().stream().map(Host::getName).toList(),
+                host.getProxy() == null ? null : host.getProxy().getId(),
                 items.findByHostId(host.getId()).size(),
                 triggers.findByHostId(host.getId()).size());
     }
@@ -173,6 +175,38 @@ public class HostService {
         }
 
         return HostSummary.from(host, problems.findOpenByHostId(hostId).size());
+    }
+
+    /**
+     * Replaces the set of templates linked to a host, leaving everything else
+     * about it alone.
+     *
+     * <p>Separate from {@link #update} because that one replaces the whole
+     * host: adding a template through it means echoing back the description,
+     * the groups, the tags and the proxy id exactly, and anything left out is
+     * cleared. Making the narrow change require the whole document is how a
+     * button that links a template ends up emptying a host's groups.
+     */
+    @Transactional
+    public HostDetail setTemplates(Long tenantId, Long hostId, List<String> templateNames) {
+        Host host = hosts.findByIdWithDetails(hostId)
+                .filter(h -> h.getTenantId().equals(tenantId))
+                .orElseThrow(() -> new IllegalArgumentException("No such host: " + hostId));
+
+        if (host.getFlags() == HostFlags.TEMPLATE) {
+            // Nested templates are not supported, and silently linking one
+            // template into another would copy items that then look local.
+            throw new IllegalArgumentException(
+                    "'" + host.getName() + "' is a template, not a host");
+        }
+
+        templateLinker.relink(host, templateNames == null ? List.of() : templateNames);
+        hosts.save(host);
+        invalidateProxyConfig(host);
+
+        log.info("Host '{}' now linked to {}", host.getTechnicalName(),
+                host.getTemplates().stream().map(Host::getName).toList());
+        return toDetail(host);
     }
 
     private void apply(Host host, HostRequest request, Long tenantId) {
@@ -278,14 +312,49 @@ public class HostService {
         if (request.interfaces() == null) {
             return;
         }
+
+        // Kept before the clear so the credentials below survive it.
+        Map<Long, HostInterface> byId = new HashMap<>();
+        Map<InterfaceType, List<HostInterface>> byType = new HashMap<>();
+        for (HostInterface current : host.getInterfaces()) {
+            byId.put(current.getId(), current);
+            byType.computeIfAbsent(current.getType(), type -> new java.util.ArrayList<>()).add(current);
+        }
+
         host.getInterfaces().clear();
         flushRemovals();
         for (InterfaceRequest interfaceRequest : request.interfaces()) {
-            host.getInterfaces().add(toInterface(host, interfaceRequest));
+            host.getInterfaces().add(
+                    toInterface(host, interfaceRequest, previousFor(interfaceRequest, byId, byType)));
         }
     }
 
-    private HostInterface toInterface(Host host, InterfaceRequest request) {
+    /**
+     * The stored interface a submitted one is replacing, if it can be told.
+     *
+     * <p>Matched on the identifier when one is sent, and otherwise on the type
+     * when the host has exactly one interface of it. The fallback is what makes
+     * this usable rather than merely correct: replacing the collection gives
+     * every interface a new identifier, so a client working from a response it
+     * read a minute ago sends identifiers that no longer exist -- and matching
+     * on the identifier alone would then lose the credentials it was trying to
+     * preserve. Two interfaces of one type is genuinely ambiguous, so nothing
+     * is assumed there.
+     */
+    private static HostInterface previousFor(InterfaceRequest request,
+                                             Map<Long, HostInterface> byId,
+                                             Map<InterfaceType, List<HostInterface>> byType) {
+        if (request.id() != null) {
+            HostInterface matched = byId.get(request.id());
+            if (matched != null) {
+                return matched;
+            }
+        }
+        List<HostInterface> sameType = byType.getOrDefault(request.type(), List.of());
+        return sameType.size() == 1 ? sameType.get(0) : null;
+    }
+
+    private HostInterface toInterface(Host host, InterfaceRequest request, HostInterface previous) {
         HostInterface hostInterface = new HostInterface();
         hostInterface.setHost(host);
         hostInterface.setType(request.type());
@@ -295,14 +364,36 @@ public class HostService {
         hostInterface.setDns(request.dns());
         hostInterface.setPort(request.port() > 0 ? request.port() : request.type().defaultPort());
         hostInterface.setSnmpVersion(request.snmpVersion());
-        hostInterface.setSnmpCommunity(request.snmpCommunity());
+        hostInterface.setSnmpCommunity(
+                keptIfOmitted(request.snmpCommunity(), previous, HostInterface::getSnmpCommunity));
         hostInterface.setSnmpSecurityName(request.snmpSecurityName());
         hostInterface.setSnmpSecurityLevel(request.snmpSecurityLevel());
         hostInterface.setSnmpAuthProtocol(request.snmpAuthProtocol());
-        hostInterface.setSnmpAuthPassphrase(request.snmpAuthPassphrase());
+        hostInterface.setSnmpAuthPassphrase(
+                keptIfOmitted(request.snmpAuthPassphrase(), previous, HostInterface::getSnmpAuthPassphrase));
         hostInterface.setSnmpPrivProtocol(request.snmpPrivProtocol());
-        hostInterface.setSnmpPrivPassphrase(request.snmpPrivPassphrase());
+        hostInterface.setSnmpPrivPassphrase(
+                keptIfOmitted(request.snmpPrivPassphrase(), previous, HostInterface::getSnmpPrivPassphrase));
         return hostInterface;
+    }
+
+    /**
+     * Keeps a stored credential that the request did not carry.
+     *
+     * <p>Reading a host never returns its community strings or v3 passphrases
+     * -- read access to a host must not be read access to what reaches it --
+     * so a client physically cannot echo them back. Replacing them with the
+     * null it does send therefore destroys them on every edit: correcting a
+     * switch's address through the API silently stopped its SNMP collection,
+     * and the host then went unmonitored with nothing in the interface to say
+     * why. The same convention the secret macros use, for the same reason: an
+     * absent secret means "leave it alone", and clearing one is done by
+     * sending an empty string rather than by omission.
+     */
+    private static String keptIfOmitted(String submitted,
+                                        HostInterface previous,
+                                        java.util.function.Function<HostInterface, String> stored) {
+        return submitted == null && previous != null ? stored.apply(previous) : submitted;
     }
 
     @Transactional
