@@ -296,6 +296,7 @@ function PromotePanel({ device, onClose }: { device: DiscoveredDevice; onClose: 
     cameraPath: '',
     cameraUser: '',
     cameraPassword: '',
+    otherMacros: {},
   }))
 
   const promote = useMutation({

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { HostClass, TemplateSummary } from '../api/types'
+import type { HostClass, HostDetail, TemplateSummary } from '../api/types'
 
 /**
  * The fields common to adding a host by hand and to confirming one that
@@ -48,6 +48,15 @@ export interface HostFormValues {
   cameraPath: string
   cameraUser: string
   cameraPassword: string
+  /**
+   * Macros the form does not show, carried through untouched.
+   *
+   * <p>The update endpoint replaces the macro set wholesale, so a macro
+   * missing from what is submitted is deleted. Without this, editing a host's
+   * address through a form that knows about three macros would silently
+   * discard every other one it had.
+   */
+  otherMacros: Record<string, string>
 }
 
 export function emptyHostForm(): HostFormValues {
@@ -60,13 +69,45 @@ export function emptyHostForm(): HostFormValues {
     cameraPath: '',
     cameraUser: '',
     cameraPassword: '',
+    otherMacros: {},
   }
 }
 
-/** Turns the form's camera fields into the macros the template reads. */
+/** Fills the form from a host as the API returns it. */
+export function hostFormFrom(detail: HostDetail): HostFormValues {
+  const remaining = { ...detail.macros }
+  const take = (macro: string): string => {
+    const value = remaining[macro] ?? ''
+    delete remaining[macro]
+    return value
+  }
+  return {
+    host: detail.summary.host,
+    // The server defaults the display name to the technical one, so showing
+    // it back as though it had been typed would make every host look as if it
+    // had been given one deliberately.
+    name: detail.summary.name === detail.summary.host ? '' : detail.summary.name,
+    hostClass: detail.summary.hostClass,
+    address: detail.summary.address,
+    templates: detail.templates,
+    cameraPath: take('{$CAMERA.RTSP.PATH}'),
+    cameraUser: take('{$CAMERA.USER}'),
+    // Arrives as ****** for a secret macro, and means "unchanged" when sent
+    // back that way.
+    cameraPassword: take('{$CAMERA.PASSWORD}'),
+    otherMacros: remaining,
+  }
+}
+
+/**
+ * Turns the form's camera fields into the macros the template reads.
+ *
+ * <p>Emitted on their values rather than on the host's class: a host that was
+ * a camera and has been reclassified still holds its camera settings, and
+ * dropping them because a select changed is a deletion nobody asked for.
+ */
 export function macrosFrom(values: HostFormValues): Record<string, string> {
-  const macros: Record<string, string> = {}
-  if (values.hostClass !== 'CAMERA') return macros
+  const macros: Record<string, string> = { ...values.otherMacros }
   if (values.cameraPath.trim()) macros['{$CAMERA.RTSP.PATH}'] = values.cameraPath.trim()
   if (values.cameraUser.trim()) macros['{$CAMERA.USER}'] = values.cameraUser.trim()
   if (values.cameraPassword) macros['{$CAMERA.PASSWORD}'] = values.cameraPassword
@@ -78,9 +119,22 @@ interface Props {
   onChange: (values: HostFormValues) => void
   /** Hidden when the address is fixed, as it is for a discovered device. */
   addressEditable?: boolean
+  /**
+   * Editing has its own Templates panel, which links and unlinks for real.
+   * Two controls for one thing, disagreeing about what is selected, is worse
+   * than one in the wrong place.
+   */
+  showTemplates?: boolean
+  mode?: 'create' | 'edit'
 }
 
-export function HostForm({ values, onChange, addressEditable = true }: Props) {
+export function HostForm({
+  values,
+  onChange,
+  addressEditable = true,
+  showTemplates = true,
+  mode = 'create',
+}: Props) {
   const { data: templates } = useQuery({
     queryKey: ['templates'],
     queryFn: () => api.templates(),
@@ -158,6 +212,7 @@ export function HostForm({ values, onChange, addressEditable = true }: Props) {
         </div>
       </div>
 
+      {showTemplates && (
       <div className="field">
         <label>
           Templates <span className="muted">— what gets monitored</span>
@@ -190,8 +245,9 @@ export function HostForm({ values, onChange, addressEditable = true }: Props) {
           )}
         </div>
       </div>
+      )}
 
-      {values.hostClass === 'CAMERA' && <CameraFields values={values} set={set} />}
+      {values.hostClass === 'CAMERA' && <CameraFields values={values} set={set} mode={mode} />}
     </>
   )
 }
@@ -199,9 +255,11 @@ export function HostForm({ values, onChange, addressEditable = true }: Props) {
 function CameraFields({
   values,
   set,
+  mode,
 }: {
   values: HostFormValues
   set: <K extends keyof HostFormValues>(key: K, value: HostFormValues[K]) => void
+  mode: 'create' | 'edit'
 }) {
   return (
     <div className="card" style={{ background: 'transparent' }}>
@@ -254,6 +312,15 @@ function CameraFields({
             autoComplete="new-password"
             onChange={(e) => set('cameraPassword', e.target.value)}
           />
+          {mode === 'edit' && (
+            // The stored password is never sent to the browser, so the field
+            // holds a placeholder. Saying so matters: an operator who clears
+            // it expecting "no change" would remove the camera's credentials
+            // and break every authenticated check on it.
+            <div className="muted" style={{ fontSize: 12 }}>
+              Leave as it is to keep the stored password. Clearing this field removes it.
+            </div>
+          )}
         </div>
       </div>
     </div>

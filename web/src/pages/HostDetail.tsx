@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
-import type { LatestValue, TemplateSummary } from '../api/types'
+import { HostForm, hostFormFrom, macrosFrom, type HostFormValues } from '../components/HostForm'
+import type { HostDetail as HostDetailDto, LatestValue, TemplateSummary } from '../api/types'
 import { MetricChart, formatValue } from '../components/MetricChart'
 
 const RANGES = [
@@ -19,6 +20,7 @@ export function HostDetail() {
 
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null)
   const [rangeHours, setRangeHours] = useState(6)
+  const [editing, setEditing] = useState(false)
 
   const hosts = useQuery({ queryKey: ['hosts'], queryFn: () => api.hosts() })
   const host = hosts.data?.find((candidate) => candidate.id === id)
@@ -57,9 +59,18 @@ export function HostDetail() {
           <h1 className="page-title">{host?.name ?? `Host ${id}`}</h1>
           <div className="page-subtitle">
             {host ? `${host.address || 'no address'} · ${host.hostClass.replace('_', ' ').toLowerCase()}` : ''}
+            {host?.status === 'DISABLED' && ' · disabled, not being polled'}
           </div>
         </div>
+        <div className="row" style={{ gap: 9 }}>
+          <button type="button" className="button ghost" onClick={() => setEditing((was) => !was)}>
+            {editing ? 'Close' : 'Edit'}
+          </button>
+          <DeleteHostButton hostId={id} name={host?.name ?? `host ${id}`} />
+        </div>
       </div>
+
+      {editing && <EditHostPanel hostId={id} onDone={() => setEditing(false)} />}
 
       {latest.error && <div className="error-banner">{(latest.error as Error).message}</div>}
 
@@ -166,6 +177,187 @@ export function HostDetail() {
 
       <TemplatePanel hostId={id} />
     </>
+  )
+}
+
+/**
+ * Editing a host.
+ *
+ * <p>The update endpoint replaces the host rather than patching it, so
+ * everything it holds is read back and sent again: leaving out the
+ * description empties it, leaving out the status re-enables a host somebody
+ * disabled on purpose, and leaving out the proxy id moves a remote site's
+ * host back to being polled from the centre. Groups and tags are the
+ * exception -- the summary formats tags for reading rather than for sending,
+ * so they are omitted, which the server treats as "leave them alone".
+ */
+function EditHostPanel({ hostId, onDone }: { hostId: number; onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const detail = useQuery({
+    queryKey: ['host', hostId],
+    queryFn: () => api.host(hostId),
+    enabled: Number.isFinite(hostId),
+  })
+
+  const [values, setValues] = useState<HostFormValues | null>(null)
+
+  useEffect(() => {
+    if (detail.data && values === null) {
+      setValues(hostFormFrom(detail.data))
+    }
+  }, [detail.data, values])
+
+  const save = useMutation({
+    mutationFn: () => api.updateHost(hostId, requestFrom(detail.data!, values!)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['host', hostId] })
+      queryClient.invalidateQueries({ queryKey: ['hosts'] })
+      queryClient.invalidateQueries({ queryKey: ['latest', hostId] })
+      queryClient.invalidateQueries({ queryKey: ['cameras'] })
+      onDone()
+    },
+  })
+
+  if (!detail.data || values === null) {
+    return null
+  }
+
+  const canSubmit = values.host.trim() !== '' && values.address.trim() !== ''
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-title">Edit host</div>
+
+      <HostForm values={values} onChange={setValues} showTemplates={false} mode="edit" />
+
+      {save.error && (
+        <div className="error-banner">
+          {save.error instanceof ApiError ? save.error.message : (save.error as Error).message}
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 9, marginTop: 12 }}>
+        <button
+          type="button"
+          className="button"
+          disabled={!canSubmit || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Saving…' : 'Save changes'}
+        </button>
+        <button type="button" className="button ghost" onClick={onDone}>
+          Cancel
+        </button>
+        {!canSubmit && (
+          <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+            A host name and an address are required.
+          </span>
+        )}
+        <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+          Templates are changed in the Templates panel below.
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Builds the replacement from the stored host and the edited form.
+ *
+ * <p>The address goes to whichever field the interface actually connects on:
+ * writing an IP into `ip` on an interface set to use DNS changes nothing the
+ * poller reads, so the edit would appear to save and do nothing.
+ */
+function requestFrom(detail: HostDetailDto, values: HostFormValues) {
+  const main = detail.interfaces.findIndex((candidate) => candidate.main)
+  const primary = main >= 0 ? main : 0
+  const address = values.address.trim()
+
+  const interfaces =
+    detail.interfaces.length > 0
+      ? detail.interfaces.map((candidate, index) => ({
+          id: candidate.id,
+          type: candidate.type,
+          main: candidate.main,
+          useIp: candidate.useIp,
+          ip: index === primary && candidate.useIp ? address : (candidate.ip ?? undefined),
+          dns: index === primary && !candidate.useIp ? address : (candidate.dns ?? undefined),
+          port: candidate.port,
+        }))
+      : [
+          {
+            type: 'AGENT',
+            main: true,
+            useIp: true,
+            ip: address,
+            port: values.hostClass === 'CAMERA' ? 80 : 10150,
+          },
+        ]
+
+  return {
+    host: values.host.trim(),
+    name: values.name.trim() || undefined,
+    hostClass: values.hostClass,
+    description: detail.description,
+    status: detail.summary.status,
+    proxyId: detail.proxyId,
+    interfaces,
+    macros: macrosFrom(values),
+  }
+}
+
+/**
+ * Deleting a host.
+ *
+ * <p>Two presses rather than a dialog, and the second one says what goes with
+ * it. The history is the part that cannot be recovered: a host can be added
+ * again in a minute, but the months of values that made its graphs worth
+ * looking at cannot.
+ */
+function DeleteHostButton({ hostId, name }: { hostId: number; name: string }) {
+  const [armed, setArmed] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteHost(hostId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hosts'] })
+      queryClient.invalidateQueries({ queryKey: ['cameras'] })
+      queryClient.invalidateQueries({ queryKey: ['problems'] })
+      navigate('/hosts')
+    },
+  })
+
+  if (!armed) {
+    return (
+      <button type="button" className="button ghost" onClick={() => setArmed(true)}>
+        Delete
+      </button>
+    )
+  }
+
+  return (
+    <div className="row" style={{ gap: 9, alignItems: 'center' }}>
+      <span className="muted" style={{ fontSize: 12, maxWidth: 320, textAlign: 'right' }}>
+        {remove.error
+          ? remove.error instanceof ApiError
+            ? remove.error.message
+            : (remove.error as Error).message
+          : `Delete ${name} and every value it has collected?`}
+      </span>
+      <button
+        type="button"
+        className="button"
+        disabled={remove.isPending}
+        onClick={() => remove.mutate()}
+      >
+        {remove.isPending ? 'Deleting…' : 'Delete for good'}
+      </button>
+      <button type="button" className="button ghost" onClick={() => setArmed(false)}>
+        Cancel
+      </button>
+    </div>
   )
 }
 

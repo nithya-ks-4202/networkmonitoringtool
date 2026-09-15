@@ -191,6 +191,35 @@ export interface HostCreateRequest {
   templates?: string[]
 }
 
+/**
+ * Replacing a host's configuration.
+ *
+ * <p>A full replacement, not a patch: a field left out is cleared, so
+ * everything the host has must be sent back. The two exceptions are
+ * deliberate -- `groups` and `tags` are omitted because the summary formats
+ * tags for display (`env: prod`) and cannot round-trip them, and the server
+ * leaves both alone when they are absent.
+ */
+export interface HostUpdateRequest {
+  host: string
+  name?: string
+  hostClass: HostClass
+  description: string
+  status: 'ENABLED' | 'DISABLED'
+  /** Must be sent: absent unassigns the host's proxy. */
+  proxyId: number | null
+  interfaces: {
+    id?: number
+    type: string
+    main: boolean
+    useIp: boolean
+    ip?: string
+    dns?: string
+    port: number
+  }[]
+  macros: Record<string, string>
+}
+
 /** A standing instruction to sweep a range of addresses. */
 export interface DiscoveryRule {
   id: number

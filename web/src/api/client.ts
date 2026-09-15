@@ -7,6 +7,7 @@ import type {
   HostCreateRequest,
   HostDetail,
   HostSummary,
+  HostUpdateRequest,
   LatestValue,
   Problem,
   PromoteRequest,
@@ -195,6 +196,15 @@ export const api = {
 
   host(hostId: number): Promise<HostDetail> {
     return request(`/api/hosts/${hostId}`)
+  },
+
+  updateHost(hostId: number, body: HostUpdateRequest): Promise<HostSummary> {
+    return request(`/api/hosts/${hostId}`, { method: 'PUT', body: JSON.stringify(body) })
+  },
+
+  /** Deletes the host, its items and every value they collected. */
+  deleteHost(hostId: number): Promise<void> {
+    return request(`/api/hosts/${hostId}`, { method: 'DELETE' })
   },
 
   /**

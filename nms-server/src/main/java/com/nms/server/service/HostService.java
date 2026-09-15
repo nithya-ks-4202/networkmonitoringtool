@@ -303,7 +303,11 @@ public class HostService {
             // received the real secret, so echoing the mask back must not
             // overwrite the stored one with six asterisks.
             macro.setValue("******".equals(value) && previous != null ? previous.getValue() : value);
-            macro.setType(previous == null ? com.nms.server.domain.MacroType.TEXT : previous.getType());
+            // A macro keeps whatever type it was given; a new one is judged
+            // from its name, so a credential is write-only from the outset
+            // rather than sitting in clear until somebody notices.
+            macro.setType(previous == null
+                    ? com.nms.server.domain.MacroType.defaultFor(name) : previous.getType());
             host.getMacros().add(macro);
         });
     }
