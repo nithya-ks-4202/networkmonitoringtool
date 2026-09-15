@@ -191,16 +191,43 @@ instead.
 ## Cameras
 
 Create a host with class `Camera` and link **Template: IP camera**. It brings
-seven items and five triggers.
+thirteen items and eight triggers.
 
-The distinction that matters: a camera with a hung encoder, an exhausted stream
-session limit, or a wiped configuration still answers ICMP and still accepts TCP
-on port 554 — while recording nothing. Only an RTSP negotiation proves the stream
-endpoint is alive, so the template runs one, with digest authentication, and
-optionally a `DESCRIBE` to catch a channel path that a firmware update renumbered.
+The template is built around two failures that every naive check passes.
+
+**The stream is dead but the camera is not.** A hung encoder, an exhausted
+session limit or a wiped configuration still answers ICMP and still accepts TCP
+on port 554 — while recording nothing. Only an RTSP negotiation proves the
+stream endpoint is alive, so the template runs one, with digest authentication,
+and optionally a `DESCRIBE` to catch a channel path that a firmware update
+renumbered.
+
+**The SD card is dead and everything else is perfect.** This one is worse,
+because the camera passes every check above: it pings, it negotiates RTSP, it
+serves live video, ONVIF reports it healthy. Live view is flawless and there is
+no footage. It surfaces weeks later when someone asks for an incident recording.
+
+So the template reads the card itself — present, writable, not in an error
+state, and not full. Three cases are separated because they need different
+responses:
+
+| Trigger | Meaning |
+|---|---|
+| **Camera is not recording (storage failed)** | A card is fitted but failed, unformatted or read-only |
+| **Camera has no storage card** | No card detected at all — the end state of a worn or counterfeit SD |
+| **Camera storage is nearly full** | Below the free-space floor; harmless if overwrite is on |
+
+A read-only card is worth calling out: the status often still reads `ok` and the
+camera carries on as though recording. It is the late stage of flash wear, and
+it needs replacing rather than reformatting.
+
+No interoperable standard reports any of this — ONVIF describes configured
+storage rather than card health — so it reads the vendor's API. **Hikvision
+ISAPI** is what is implemented. On other makes the storage items report as
+unsupported with the reason, and the rest of the template is unaffected.
 
 Its triggers depend on the offline trigger, so a camera that loses power raises
-one problem rather than four.
+one problem rather than seven.
 
 Per-camera overrides go in macros:
 
@@ -208,8 +235,10 @@ Per-camera overrides go in macros:
 |---|---|
 | `{$CAMERA.RTSP.PORT}` | RTSP port, if not 554 |
 | `{$CAMERA.RTSP.PATH}` | Stream path; varies by manufacturer |
-| `{$CAMERA.USER}` / `{$CAMERA.PASSWORD}` | RTSP and ONVIF credentials |
+| `{$CAMERA.USER}` / `{$CAMERA.PASSWORD}` | RTSP, ONVIF and storage-API credentials |
 | `{$CAMERA.DOWN.TIME}` | How long unreachable before it counts as offline |
+| `{$CAMERA.STORAGE.PATH}` | Vendor storage API path; defaults to Hikvision ISAPI |
+| `{$CAMERA.STORAGE.PFREE.MIN}` | Free-space percentage below which the card counts as full |
 
 ## Layout
 
