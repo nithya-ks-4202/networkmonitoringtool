@@ -25,6 +25,14 @@ public enum CheckType {
     RTSP(true),
     /** ONVIF device-service probe, used for IP camera health and metadata. */
     ONVIF(true),
+    /**
+     * A camera's own storage: is the SD card present, healthy and recording.
+     *
+     * <p>Separate from {@link #ONVIF} because no interoperable standard
+     * reports it. ONVIF describes configured storage rather than card health,
+     * so this reads the vendor's own API.
+     */
+    CAMERA_STORAGE(true),
     /** Shell script or binary executed by the server or proxy. */
     EXTERNAL_SCRIPT(true),
     /** SQL query executed against a configured data source. */

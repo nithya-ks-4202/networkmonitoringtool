@@ -125,10 +125,25 @@ public class EscalationService {
     /**
      * Runs one rung of an escalation.
      *
+     * <p>Takes an identifier rather than an entity, and loads it here. The
+     * runner selects due escalations outside a transaction; an entity handed
+     * across that boundary is detached, and the first lazy association touched
+     * -- {@code getProblem()} -- throws. Loading inside the transaction that
+     * uses it is what makes every association resolvable, and it also means
+     * the state acted on is current rather than whatever it was when the
+     * selection ran.
+     *
      * @return true when the escalation still has work to do
      */
     @Transactional
-    public boolean advance(Escalation escalation) {
+    public boolean advance(Long escalationId) {
+        Escalation escalation = escalations.findById(escalationId).orElse(null);
+        if (escalation == null) {
+            // Resolved and cleaned up between the selection and now. Not an
+            // error: the work it represented is done.
+            return false;
+        }
+
         Problem problem = escalation.getProblem();
         Action action = actions.findByIdWithOperations(escalation.getAction().getId())
                 .orElse(null);

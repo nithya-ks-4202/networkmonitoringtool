@@ -36,14 +36,14 @@ public class AlertDispatcher {
     @Scheduled(fixedDelayString = "${nms.alerter.interval-ms:5000}")
     public void dispatch() {
         try {
-            List<Alert> pending = delivery.claim(batchSize);
-            for (Alert alert : pending) {
+            List<Long> pending = delivery.claim(batchSize);
+            for (Long alertId : pending) {
                 try {
-                    delivery.deliver(alert);
+                    delivery.deliver(alertId);
                 } catch (RuntimeException e) {
                     // One alert must not abandon the rest of the batch: the
                     // next one might be the disaster-severity page.
-                    log.error("Failed to deliver alert {}: {}", alert.getId(), e.getMessage(), e);
+                    log.error("Failed to deliver alert {}: {}", alertId, e.getMessage(), e);
                 }
             }
         } catch (RuntimeException e) {

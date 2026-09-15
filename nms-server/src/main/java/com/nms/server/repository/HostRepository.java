@@ -69,13 +69,39 @@ public interface HostRepository extends JpaRepository<Host, Long>, JpaSpecificat
             """)
     long countMonitored(@Param("tenantId") Long tenantId);
 
-    /** Loads a host with everything the configuration API needs in one query. */
-    @Query("""
-            SELECT h FROM Host h
-            LEFT JOIN FETCH h.interfaces
-            LEFT JOIN FETCH h.macros
-            LEFT JOIN FETCH h.tags
-            WHERE h.id = :hostId
-            """)
-    Optional<Host> findByIdWithDetails(@Param("hostId") Long hostId);
+    @Query("SELECT h FROM Host h LEFT JOIN FETCH h.interfaces WHERE h.id = :hostId")
+    Optional<Host> findByIdWithInterfaces(@Param("hostId") Long hostId);
+
+    @Query("SELECT h FROM Host h LEFT JOIN FETCH h.macros WHERE h.id = :hostId")
+    Optional<Host> findByIdWithMacros(@Param("hostId") Long hostId);
+
+    @Query("SELECT h FROM Host h LEFT JOIN FETCH h.tags WHERE h.id = :hostId")
+    Optional<Host> findByIdWithTags(@Param("hostId") Long hostId);
+
+    /**
+     * Loads a host with everything the configuration API needs.
+     *
+     * <p>Three queries rather than one join, because Hibernate refuses to
+     * fetch more than one bag at a time:
+     *
+     * <pre>MultipleBagFetchException: cannot simultaneously fetch multiple bags</pre>
+     *
+     * <p>Fetching all three in one query threw that on every call, so reading
+     * or editing a host through the API failed outright -- a camera's address,
+     * credentials and stream path could be set when it was created and never
+     * corrected afterwards.
+     *
+     * <p>The three queries return the same managed instance, because they run
+     * in one persistence context and Hibernate populates each collection on
+     * the entity it already has. That makes them cheap and leaves callers
+     * unchanged -- but it does require a transaction, which both callers have.
+     */
+    default Optional<Host> findByIdWithDetails(Long hostId) {
+        Optional<Host> host = findByIdWithInterfaces(hostId);
+        if (host.isPresent()) {
+            findByIdWithMacros(hostId);
+            findByIdWithTags(hostId);
+        }
+        return host;
+    }
 }

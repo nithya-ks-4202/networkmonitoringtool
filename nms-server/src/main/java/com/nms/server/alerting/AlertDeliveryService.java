@@ -56,21 +56,42 @@ public class AlertDeliveryService {
      * without any message being delivered twice -- the property that matters
      * most here, because a duplicate page erodes trust in every alert after it.
      *
-     * <p>The status is written inside the claiming transaction so a crash
-     * between claim and delivery leaves a row visibly stuck in SENDING rather
-     * than one that silently reverts to NEW and is sent again.
+     * <p>The status is written inside the claiming transaction, so a crash
+     * between claim and delivery leaves a row visibly stuck in SENDING. Such a
+     * row is reclaimed once it is older than {@link #STALLED_AFTER}, because
+     * an alert nobody will ever retry is a page that was never sent.
+     *
+     * <p>Returns identifiers rather than entities. The dispatcher calls this
+     * outside a transaction and delivers each alert inside its own; an entity
+     * crossing that boundary is detached, and the first association touched --
+     * {@code getMediaType()} -- throws. Ids make that impossible to get wrong.
      */
     @Transactional
-    public List<Alert> claim(int batchSize) {
-        List<Alert> pending = alerts.claimPending(Instant.now(), batchSize);
+    public List<Long> claim(int batchSize) {
+        Instant now = Instant.now();
+        List<Alert> pending = alerts.claimPending(now, now.minus(STALLED_AFTER), batchSize);
         pending.forEach(alert -> alert.setStatus(AlertStatus.SENDING));
         alerts.saveAll(pending);
-        return pending;
+        return pending.stream().map(Alert::getId).toList();
     }
+
+    /**
+     * How long an alert may sit in SENDING before another pass reclaims it.
+     *
+     * <p>Comfortably longer than any sender's timeout, so a slow SMTP server
+     * is not mistaken for a dead instance and the message sent twice.
+     */
+    private static final java.time.Duration STALLED_AFTER = java.time.Duration.ofMinutes(5);
 
     /** Delivers one alert, recording success or scheduling a retry. */
     @Transactional
-    public void deliver(Alert alert) {
+    public void deliver(Long alertId) {
+        Alert alert = alerts.findById(alertId).orElse(null);
+        if (alert == null) {
+            // Cancelled or cleaned up since the claim. Nothing to send.
+            return;
+        }
+
         MediaType mediaType = alert.getMediaType();
         if (mediaType == null) {
             fail(alert, "the media type has been deleted", false);

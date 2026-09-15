@@ -179,16 +179,25 @@ public final class CoreRepositories {
     }
 
     public interface EscalationRepository extends JpaRepository<Escalation, Long> {
-        /** Escalations whose next rung is due. */
+        /**
+         * Identifiers of the escalations whose next rung is due.
+         *
+         * <p>Ids rather than entities on purpose. The runner selects outside a
+         * transaction and advances each escalation inside its own, so entities
+         * returned here would arrive detached and every lazy association --
+         * the problem, its host -- would fail to initialise. Returning ids
+         * makes that impossible to get wrong: the transaction that uses the
+         * escalation is the one that loaded it.
+         */
         @Query("""
-                SELECT e FROM Escalation e
+                SELECT e.id FROM Escalation e
                 WHERE e.nextRunAt <= :now
                   AND e.status IN (com.nms.server.domain.EscalationStatus.ACTIVE,
                                    com.nms.server.domain.EscalationStatus.RECOVERING)
                 ORDER BY e.nextRunAt
                 """)
-        List<Escalation> findDue(@Param("now") Instant now,
-                                 org.springframework.data.domain.Pageable pageable);
+        List<Long> findDueIds(@Param("now") Instant now,
+                              org.springframework.data.domain.Pageable pageable);
 
         List<Escalation> findByProblemId(Long problemId);
 
@@ -212,16 +221,27 @@ public final class CoreRepositories {
          *
          * <p>{@code SKIP LOCKED} lets several server instances drain the queue
          * concurrently without any one message being sent twice.
+         *
+         * <p>Alerts left in {@code SENDING} past {@code stalledBefore} are
+         * claimed again. Without that, an instance killed between marking an
+         * alert as sending and delivering it strands that alert forever: it is
+         * no longer {@code NEW}, so nothing picks it up, and the page it
+         * carried is silently never sent. A duplicate notification is a far
+         * better outcome than a missing one, which is why the recovery is
+         * unconditional rather than conditional on proving the sender died.
          */
         @Query(value = """
                 SELECT * FROM alert
-                WHERE status = 'NEW'
-                  AND scheduled_at <= :now
+                WHERE scheduled_at <= :now
+                  AND (status = 'NEW'
+                       OR (status = 'SENDING' AND scheduled_at <= :stalledBefore))
                 ORDER BY scheduled_at
                 LIMIT :limit
                 FOR UPDATE SKIP LOCKED
                 """, nativeQuery = true)
-        List<Alert> claimPending(@Param("now") Instant now, @Param("limit") int limit);
+        List<Alert> claimPending(@Param("now") Instant now,
+                                 @Param("stalledBefore") Instant stalledBefore,
+                                 @Param("limit") int limit);
 
         @Query("""
                 SELECT a FROM Alert a
