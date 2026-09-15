@@ -309,13 +309,17 @@ Building them is what found the two defects fixed in `3ab35c0` — in particular
 that the server's poller claimed nothing at all, which no test caught and
 reading the code did not reveal.
 
-**Not verified:** the web image's runtime stage. Its build stage runs (`npm ci`
-and `npm run build` produce `web/dist`), but nginx's template rendering and the
-`/api` proxy pass have not executed in a container. The Helm chart was not
-rendered by `helm template` either; its templates are structurally checked only.
-SNMP and ONVIF have unit coverage and no integration test against real hardware.
-There is no API for listing templates — they are linked by name when a host is
-created, and the interface offers no way to browse them.
+**All three images, running together:** the full Compose stack has been brought
+up on a separate machine and signed into — which is what finally exercised the
+web image's runtime stage, nginx's template rendering and its `/api` proxy pass.
+That was the last part of the build I had no way to reach from a container-only
+environment.
+
+**Not verified:** the Helm chart was never rendered by `helm template`; its
+templates are structurally checked only. SNMP and ONVIF have unit coverage and
+no integration test against real hardware, and the Hikvision storage parsing is
+tested against captured ISAPI payloads rather than a camera. Media types and
+actions have no interface — alerting is configured through the API or SQL.
 
 ## Licence
 
