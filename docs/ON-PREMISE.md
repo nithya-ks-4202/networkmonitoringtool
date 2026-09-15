@@ -191,6 +191,34 @@ docker compose logs -f server      # watch the migrations apply
 
 Migrations run automatically at startup and are forward-only. There is no automated downgrade — if an upgrade goes wrong, restore the backup. That is the reason the backup comes first.
 
+### Picking up template changes
+
+An upgrade that adds items or triggers to a template — new camera storage
+checks, say — changes the **template**. Hosts already linked to it keep the set
+they were given when they were linked, so they carry on monitoring exactly what
+they did before.
+
+Re-saving a host re-applies its templates and adds whatever is missing:
+
+```bash
+# For one host, through the API: read it back and send it again unchanged.
+curl -s -X PUT http://localhost:8080/api/hosts/<id> \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '<the host's current definition>'
+```
+
+This is safe to repeat. Items and triggers the host already has are left
+exactly as they are, including any threshold that has been tuned by hand — only
+the missing ones are added. Nothing is deleted and no history is lost.
+
+Check what a host gained:
+
+```bash
+docker compose exec db psql -U nms -d nms -c \
+  "SELECT h.host, count(*) FROM item i JOIN host h USING (host_id)
+    WHERE h.flags = 'MONITORED' GROUP BY h.host ORDER BY h.host;"
+```
+
 ## Remote sites
 
 For a second office, put a proxy there rather than opening firewall rules to it.

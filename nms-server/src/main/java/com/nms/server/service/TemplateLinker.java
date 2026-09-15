@@ -57,10 +57,22 @@ public class TemplateLinker {
     public void link(Host host, List<String> templateNames) {
         for (String templateName : templateNames) {
             Host template = findTemplate(host.getTenantId(), templateName);
-            if (host.getTemplates().stream().anyMatch(linked -> linked.getId().equals(template.getId()))) {
-                continue;
+
+            boolean alreadyLinked = host.getTemplates().stream()
+                    .anyMatch(linked -> linked.getId().equals(template.getId()));
+            if (!alreadyLinked) {
+                host.getTemplates().add(template);
             }
-            host.getTemplates().add(template);
+
+            // Copied even when the template is already linked. Skipping here
+            // meant a template could never gain anything after the fact: an
+            // upgrade that added items and triggers to a template left every
+            // host already using it untouched, with no way to catch up short
+            // of unlinking -- which deletes the history too.
+            //
+            // Safe to repeat because the copy is idempotent: an item or
+            // trigger the host already has is kept as it is rather than
+            // replaced, so configuration made by hand survives.
             copyTemplate(template, host);
         }
         hosts.save(host);
@@ -146,10 +158,29 @@ public class TemplateLinker {
         // has an identity to point at.
         Map<Long, TriggerDef> copiedByTemplateTriggerId = new HashMap<>();
 
+        // What the host already has, by description. Items are matched on key
+        // a few lines above; triggers have no such identifier, and the
+        // description is what an operator recognises them by. Without this a
+        // second link would duplicate every trigger, so the same problem would
+        // be raised twice and acknowledged once.
+        Map<String, TriggerDef> existingTriggers = new HashMap<>();
+        for (TriggerDef existing : triggers.findByHostId(host.getId())) {
+            existingTriggers.put(existing.getDescription(), existing);
+        }
+
         for (TriggerDef templateTrigger : triggers.findByHostId(template.getId())) {
             if (templateTrigger.getFlags() == com.nms.server.domain.TriggerFlags.PROTOTYPE) {
                 continue;
             }
+
+            TriggerDef existing = existingTriggers.get(templateTrigger.getDescription());
+            if (existing != null) {
+                // Kept as it is, including any threshold someone has tuned,
+                // but still recorded so dependencies can point at it.
+                copiedByTemplateTriggerId.put(templateTrigger.getId(), existing);
+                continue;
+            }
+
             TriggerDef copy = copyTrigger(templateTrigger, template, host);
             triggers.save(copy);
             copiedByTemplateTriggerId.put(templateTrigger.getId(), copy);
