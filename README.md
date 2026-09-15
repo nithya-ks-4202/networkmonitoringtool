@@ -266,6 +266,12 @@ Requires JDK 21 and Node 22.
 
 Honest account of what has and has not been exercised.
 
+**Alerting, verified by receiving one:** a real problem opening, an
+escalation climbing its ladder with a notification delivered at each rung, a
+host edited through the API, the problem recovering, and a recovery
+notification delivered — all observed arriving at a receiver outside the
+system, with every alert row reaching `SENT`.
+
 **Discovery and host creation, verified in a browser:** creating a scan,
 sweeping a range, four devices found and classified, promoting one with the
 suggested name and template, the device dropping off the pending list

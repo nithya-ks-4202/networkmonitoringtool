@@ -193,6 +193,27 @@ public class HostService {
         applyInterfaces(host, request);
     }
 
+    /**
+     * Writes pending removals before their replacements are added.
+     *
+     * <p>The three collections below are replaced wholesale -- clear, then
+     * add. Hibernate orders inserts before deletes within a single flush, so
+     * on an update the new rows are written while the old ones are still
+     * present and every unique constraint on those tables fires at once:
+     *
+     * <pre>duplicate key value violates unique constraint "uq_interface_main"</pre>
+     *
+     * <p>Editing a host therefore failed with a conflict every time, even when
+     * the submitted values were identical to the stored ones -- so a camera's
+     * address, credentials or stream path could be set once at creation and
+     * never corrected. Flushing between the removal and the replacement is
+     * cheaper and harder to get wrong than teaching each method to diff its
+     * collection in place.
+     */
+    private void flushRemovals() {
+        hosts.flush();
+    }
+
     private void applyGroups(Host host, HostRequest request, Long tenantId) {
         if (request.groups() == null) {
             return;
@@ -218,6 +239,7 @@ public class HostService {
             return;
         }
         host.getTags().clear();
+        flushRemovals();
         for (var tagRequest : request.tags()) {
             HostTag tag = new HostTag();
             tag.setHost(host);
@@ -235,6 +257,9 @@ public class HostService {
         host.getMacros().forEach(macro -> existing.put(macro.getMacro(), macro));
 
         host.getMacros().clear();
+        // The map above still holds the previous values in memory, so the
+        // masked-secret check below works after the rows are gone.
+        flushRemovals();
         request.macros().forEach((name, value) -> {
             HostMacro macro = new HostMacro();
             macro.setHost(host);
@@ -254,6 +279,7 @@ public class HostService {
             return;
         }
         host.getInterfaces().clear();
+        flushRemovals();
         for (InterfaceRequest interfaceRequest : request.interfaces()) {
             host.getInterfaces().add(toInterface(host, interfaceRequest));
         }

@@ -54,15 +54,15 @@ public class EscalationRunner {
                 log.info("Lifted {} expired problem suppression(s)", released);
             }
 
-            List<Escalation> due = escalations.findDue(now, PageRequest.of(0, batchSize));
-            for (Escalation escalation : due) {
+            List<Long> due = escalations.findDueIds(now, PageRequest.of(0, batchSize));
+            for (Long escalationId : due) {
                 try {
-                    escalationService.advance(escalation);
+                    escalationService.advance(escalationId);
                 } catch (RuntimeException e) {
                     // One broken escalation must not stall every other
                     // incident's notifications.
                     log.error("Failed to advance escalation {}: {}",
-                            escalation.getId(), e.getMessage(), e);
+                            escalationId, e.getMessage(), e);
                 }
             }
         } catch (RuntimeException e) {
