@@ -53,16 +53,34 @@ technical one, so it is worth knowing before you start rather than after.
 A monitoring system that stops when the server reboots is worse than none, and
 WSL2 does not start on its own. Register it as a scheduled task:
 
+**Run the task as the account that installed the distribution, not as SYSTEM.**
+WSL registers a distribution per Windows user profile, so `wsl -d Ubuntu` under
+SYSTEM looks in a profile where no distribution exists and fails with *there is
+no distribution with the supplied name* — at boot, where nobody sees it. The
+monitoring system is then simply not running, which is the one failure it must
+not have.
+
 ```powershell
-# PowerShell as Administrator
+# PowerShell as Administrator. Prompts for that account's password, which
+# Windows stores so the task can run with nobody signed in.
 $action  = New-ScheduledTaskAction -Execute 'wsl.exe' `
            -Argument '-d Ubuntu -u root -- /bin/sh -c "service docker start && cd /home/<you>/nms && docker compose up -d"'
 $trigger = New-ScheduledTaskTrigger -AtStartup
 Register-ScheduledTask -TaskName 'NMS' -Action $action -Trigger $trigger `
-    -User 'SYSTEM' -RunLevel Highest
+    -User "$env:USERDOMAIN\$env:USERNAME" -RunLevel Highest `
+    -Password (Read-Host 'Windows password' -AsSecureString |
+               ForEach-Object { [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                   [Runtime.InteropServices.Marshal]::SecureStringToBSTR($_)) })
 ```
 
-Then **test it by rebooting**. An untested boot path is an assumption.
+If storing that password is not acceptable, the alternative is to enable systemd
+in WSL (`[boot] systemd=true` in `/etc/wsl.conf`) and let Docker's own unit start
+the stack with `restart: unless-stopped`, but something must still start WSL
+itself at boot — it does not start on its own.
+
+Then **test it by rebooting**, and check `docker compose ps` afterwards rather
+than assuming. An untested boot path is an assumption, and this one has a known
+way to fail silently.
 
 ### Reaching it from other machines
 
@@ -96,8 +114,16 @@ reason to prefer mirrored networking where it is available.
 
 ### Monitoring devices on the LAN
 
-Outbound works normally: ICMP, SNMP and RTSP from inside WSL2 reach cameras and
-switches on the office network through the host. What does not work is
+The machine has to be on the network it is monitoring. Obvious written down,
+and easy to lose an afternoon to: a laptop on a phone's hotspot has a default
+gateway of `192.0.0.1` and no route to any `192.168.x.x` LAN at all, so every
+camera reads OFFLINE while the camera is fine and the tool is working exactly
+as designed. Check with `ping` from the host before blaming anything else. A
+machine that stays plugged into the camera network is the right home for this;
+a laptop that moves between networks is not.
+
+Outbound otherwise works normally: ICMP, SNMP and RTSP from inside WSL2 reach
+cameras and switches on the office network through the host. What does not work is
 `network_mode: host` for a proxy — containers sit behind the VM, so a proxy
 needs the native installer below if it must see the LAN as the host sees it.
 
